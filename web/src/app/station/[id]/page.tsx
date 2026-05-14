@@ -30,6 +30,8 @@ export default async function StationPage({
         </p>
       </header>
 
+      <Fullness bikes={station.bikes} docks={station.docks} />
+
       <section className="grid grid-cols-3 gap-3">
         <Tile label="Bikes available" value={station.bikes ?? "—"} accent="green" />
         <Tile label="Docks available" value={station.docks ?? "—"} accent="blue" />
@@ -48,6 +50,37 @@ export default async function StationPage({
         Forecast curve and POI context land in M3 / M4.
       </p>
     </div>
+  );
+}
+
+function Fullness({ bikes, docks }: { bikes: number | null; docks: number | null }) {
+  if (bikes === null || docks === null) return null;
+  const total = bikes + docks;
+  if (total === 0) {
+    return (
+      <div className="text-xs text-zinc-500">No live data yet for this station.</div>
+    );
+  }
+  const fill = bikes / total;
+  const pct = Math.round(fill * 100);
+  const dist = Math.abs(fill - 0.5);
+  const color = dist < 0.2 ? "#16a34a" : dist < 0.4 ? "#f59e0b" : "#dc2626";
+  return (
+    <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex flex-col gap-2">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs uppercase tracking-wide text-zinc-500">Currently</span>
+        <span className="text-2xl font-semibold" style={{ color }}>
+          {pct}% full
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+        <div className="h-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+      <div className="flex justify-between text-[10px] text-zinc-500">
+        <span>No bikes</span>
+        <span>No docks</span>
+      </div>
+    </section>
   );
 }
 
