@@ -34,9 +34,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Vélib Wizard API", lifespan=lifespan)
 
+# CORS: explicit origins (from ALLOWED_ORIGINS env) plus a regex for common
+# preview/tunnel hosts so we don't have to touch Render every time we add a
+# Vercel preview branch or fire up a quick cloudflared tunnel.
+_explicit_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+_origin_regex = r"^https?://(localhost(:\d+)?|.*\.vercel\.app|.*\.trycloudflare\.com|.*\.loca\.lt)$"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.allowed_origins.split(",") if o.strip()],
+    allow_origins=_explicit_origins,
+    allow_origin_regex=_origin_regex,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
