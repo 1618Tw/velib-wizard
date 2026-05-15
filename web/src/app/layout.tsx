@@ -42,6 +42,7 @@ export default function RootLayout({
               <nav className="flex gap-4 text-sm text-zinc-600 dark:text-zinc-400">
                 <Link href="/" className="hover:text-zinc-900 dark:hover:text-zinc-100">Map</Link>
                 <Link href="/network" className="hover:text-zinc-900 dark:hover:text-zinc-100">Network</Link>
+                <Link href="/status" className="hover:text-zinc-900 dark:hover:text-zinc-100">Status</Link>
               </nav>
             </div>
           </header>

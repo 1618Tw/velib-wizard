@@ -1,8 +1,10 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+import httpx
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -13,6 +15,8 @@ from db.session import get_session
 from scheduler import build_scheduler
 
 logging.basicConfig(level=logging.INFO)
+
+PROCESS_STARTED_AT = datetime.now(tz=timezone.utc)
 
 
 @asynccontextmanager
@@ -53,6 +57,90 @@ def health(session: Session = Depends(get_session)) -> dict:
         "stations": stations,
         "snapshots": snapshots,
         "last_snapshot_ts": last_snap.isoformat() if last_snap else None,
+    }
+
+
+def _gbfs_reachable() -> bool:
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            r = client.head(f"{settings.gbfs_base}/station_information.json")
+            return r.status_code < 400
+    except Exception:
+        return False
+
+
+@app.get("/api/status")
+def status_overview(response: Response, session: Session = Depends(get_session)) -> dict:
+    now = datetime.now(tz=timezone.utc)
+    row = session.execute(
+        text(
+            """
+            SELECT
+              (SELECT count(*) FROM stations) AS stations,
+              (SELECT count(*) FROM forecasts) AS forecasts,
+              (SELECT count(*) FROM status_snapshots) AS snapshots_total,
+              (SELECT count(*) FROM status_snapshots WHERE ts >= now() - interval '1 hour') AS snapshots_1h,
+              (SELECT count(*) FROM status_snapshots WHERE ts >= now() - interval '24 hours') AS snapshots_24h,
+              (SELECT max(ts) FROM status_snapshots) AS last_ts,
+              (SELECT min(ts) FROM status_snapshots) AS first_ts,
+              pg_database_size(current_database()) AS db_bytes
+            """
+        )
+    ).mappings().one()
+
+    last_ts = row["last_ts"]
+    minutes_since_last = (
+        (now - last_ts).total_seconds() / 60.0 if last_ts is not None else None
+    )
+
+    # Sparkline: snapshots per 15-min bucket for the last 6 hours.
+    buckets = session.execute(
+        text(
+            """
+            SELECT
+              to_timestamp(floor(extract(epoch FROM ts) / 900) * 900) AS bucket,
+              count(*) AS n
+            FROM status_snapshots
+            WHERE ts >= now() - interval '6 hours'
+            GROUP BY bucket
+            ORDER BY bucket ASC
+            """
+        )
+    ).mappings().all()
+
+    gbfs_ok = _gbfs_reachable()
+
+    # Health verdict — fails fast if data is stale or GBFS is down.
+    healthy = (
+        minutes_since_last is not None
+        and minutes_since_last < 15
+        and gbfs_ok
+    )
+    if not healthy:
+        response.status_code = 503
+
+    return {
+        "ok": healthy,
+        "checked_at": now.isoformat(),
+        "process_started_at": PROCESS_STARTED_AT.isoformat(),
+        "uptime_seconds": int((now - PROCESS_STARTED_AT).total_seconds()),
+        "gbfs_reachable": gbfs_ok,
+        "data": {
+            "stations": row["stations"],
+            "forecasts": row["forecasts"],
+            "snapshots_total": row["snapshots_total"],
+            "snapshots_last_hour": row["snapshots_1h"],
+            "snapshots_last_24h": row["snapshots_24h"],
+            "last_snapshot_ts": last_ts.isoformat() if last_ts else None,
+            "first_snapshot_ts": row["first_ts"].isoformat() if row["first_ts"] else None,
+            "minutes_since_last_snapshot": (
+                round(minutes_since_last, 1) if minutes_since_last is not None else None
+            ),
+            "database_bytes": int(row["db_bytes"]),
+        },
+        "sparkline": [
+            {"bucket": b["bucket"].isoformat(), "n": int(b["n"])} for b in buckets
+        ],
     }
 
 

@@ -29,11 +29,38 @@ export type NetworkSummary = {
   last_ts: string | null;
 };
 
+export type StatusOverview = {
+  ok: boolean;
+  checked_at: string;
+  process_started_at: string;
+  uptime_seconds: number;
+  gbfs_reachable: boolean;
+  data: {
+    stations: number;
+    forecasts: number;
+    snapshots_total: number;
+    snapshots_last_hour: number;
+    snapshots_last_24h: number;
+    last_snapshot_ts: string | null;
+    first_snapshot_ts: string | null;
+    minutes_since_last_snapshot: number | null;
+    database_bytes: number;
+  };
+  sparkline: { bucket: string; n: number }[];
+};
+
 async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { ...init });
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText} on ${path}`);
   }
+  return res.json() as Promise<T>;
+}
+
+/** Like getJSON but doesn't throw on non-2xx — the /api/status endpoint
+ *  intentionally returns 503 with a valid payload when data is stale. */
+async function getJSONLenient<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`);
   return res.json() as Promise<T>;
 }
 
@@ -43,4 +70,5 @@ export const api = {
   history: (id: string, hours = 24) =>
     getJSON<HistoryPoint[]>(`/api/stations/${id}/history?hours=${hours}`),
   networkSummary: () => getJSON<NetworkSummary>("/api/network/summary"),
+  status: () => getJSONLenient<StatusOverview>("/api/status"),
 };
