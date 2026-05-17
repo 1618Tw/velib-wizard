@@ -81,16 +81,29 @@ def collect_station_status(session: Session) -> int:
                 "is_returning": bool(s.get("is_returning", True)),
             }
         )
-    session.execute(
-        text(
-            """
-            INSERT INTO status_snapshots
-              (station_id, ts, bikes, docks, is_renting, is_returning)
-            VALUES (:station_id, :ts, :bikes, :docks, :is_renting, :is_returning)
-            ON CONFLICT (station_id, ts) DO NOTHING
-            """
-        ),
-        rows,
-    )
+
+    # Filter out station_ids that aren't in `stations` yet. Vélib occasionally
+    # adds a new station to the feed before our daily station_information
+    # refresh has run; without this filter the FK would fail the whole batch.
+    # Lost rows are at most one per station per tick until the next info
+    # refresh — trivial vs the cost of dropping the entire batch.
+    known_ids = {
+        r[0]
+        for r in session.execute(text("SELECT station_id FROM stations")).all()
+    }
+    filtered = [r for r in rows if r["station_id"] in known_ids]
+
+    if filtered:
+        session.execute(
+            text(
+                """
+                INSERT INTO status_snapshots
+                  (station_id, ts, bikes, docks, is_renting, is_returning)
+                VALUES (:station_id, :ts, :bikes, :docks, :is_renting, :is_returning)
+                ON CONFLICT (station_id, ts) DO NOTHING
+                """
+            ),
+            filtered,
+        )
     session.commit()
-    return len(rows)
+    return len(filtered)
