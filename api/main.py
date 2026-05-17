@@ -296,6 +296,16 @@ def network_summary(session: Session = Depends(get_session)) -> dict:
     return dict(row)
 
 
+@app.post("/api/cron/test-alert", dependencies=[Depends(require_cron_secret)])
+def cron_test_alert() -> dict:
+    sent = send_email_alert(
+        "Test alert",
+        "This is a manual test from /api/cron/test-alert. If you can read this, "
+        "the alert pipeline is wired up correctly.",
+    )
+    return {"sent": sent, "alerts_enabled": alerts_enabled()}
+
+
 @app.post("/api/cron/collect-info", dependencies=[Depends(require_cron_secret)])
 def cron_collect_info(session: Session = Depends(get_session)) -> dict:
     n = collect_station_information(session)
