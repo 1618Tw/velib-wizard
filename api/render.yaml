@@ -20,3 +20,9 @@ services:
         sync: false
       - key: CRON_SECRET
         sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: ALERT_TO
+        sync: false

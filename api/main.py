@@ -1,7 +1,7 @@
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
@@ -12,11 +12,19 @@ from sqlalchemy.orm import Session
 from collectors.gbfs import collect_station_information, collect_station_status
 from config import settings
 from db.session import get_session
+from notifier import alerts_enabled, send_email_alert
 from scheduler import build_scheduler
 
 logging.basicConfig(level=logging.INFO)
 
 PROCESS_STARTED_AT = datetime.now(tz=timezone.utc)
+
+# In-memory dedupe for health alerts. Lost on restart — that's acceptable;
+# the cost of a duplicate alert after a deploy is much smaller than missing
+# the real one.
+_LAST_ALERT_AT: datetime | None = None
+_LAST_ALERT_KIND: str | None = None
+STALE_MINUTES = 15
 
 
 @asynccontextmanager
@@ -54,16 +62,61 @@ def require_cron_secret(x_cron_secret: str | None = Header(default=None)) -> Non
         raise HTTPException(status_code=401, detail="bad cron secret")
 
 
+def _maybe_send_alert(kind: str, subject: str, body: str) -> bool:
+    """Emit an alert email, but at most once per cooldown window per kind."""
+    global _LAST_ALERT_AT, _LAST_ALERT_KIND
+    now = datetime.now(tz=timezone.utc)
+    cooldown = timedelta(minutes=settings.alert_cooldown_minutes)
+    if (
+        _LAST_ALERT_AT is not None
+        and _LAST_ALERT_KIND == kind
+        and (now - _LAST_ALERT_AT) < cooldown
+    ):
+        return False
+    sent = send_email_alert(subject, body)
+    if sent:
+        _LAST_ALERT_AT = now
+        _LAST_ALERT_KIND = kind
+    return sent
+
+
 @app.get("/health")
 def health(session: Session = Depends(get_session)) -> dict:
     stations = session.execute(text("SELECT count(*) FROM stations")).scalar_one()
     snapshots = session.execute(text("SELECT count(*) FROM status_snapshots")).scalar_one()
     last_snap = session.execute(text("SELECT max(ts) FROM status_snapshots")).scalar_one()
+
+    now = datetime.now(tz=timezone.utc)
+    minutes_since_last = (
+        (now - last_snap).total_seconds() / 60.0 if last_snap is not None else None
+    )
+
+    # Side effect: trigger an alert email when the system is unhealthy. The
+    # keep-warm cron hits this endpoint every 4 min, so this acts as our
+    # in-code monitor without needing any extra external service.
+    if alerts_enabled():
+        if minutes_since_last is None or minutes_since_last >= STALE_MINUTES:
+            _maybe_send_alert(
+                kind="stale",
+                subject="Data is stale",
+                body=(
+                    f"No new snapshot in the last {minutes_since_last:.1f} min "
+                    f"(threshold {STALE_MINUTES} min).\n"
+                    f"stations={stations} snapshots={snapshots} "
+                    f"last_snap={last_snap.isoformat() if last_snap else 'never'}\n\n"
+                    f"Check: https://console.cron-job.org and the Render logs."
+                ),
+            )
+
     return {
         "ok": True,
         "stations": stations,
         "snapshots": snapshots,
         "last_snapshot_ts": last_snap.isoformat() if last_snap else None,
+        "minutes_since_last_snapshot": (
+            round(minutes_since_last, 1) if minutes_since_last is not None else None
+        ),
+        "alerts_enabled": alerts_enabled(),
     }
 
 

@@ -9,5 +9,13 @@ class Settings(BaseSettings):
     gbfs_base: str = "https://velib-metropole-opendata.smovengo.cloud/opendata/Velib_Metropole"
     allowed_origins: str = "http://localhost:3000"
 
+    # Email alerts. Leave SMTP_USER empty to disable alerting entirely.
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""           # Gmail address that sends the alert
+    smtp_password: str = ""       # 16-char Google App Password
+    alert_to: str = ""            # Recipient — defaults to smtp_user if empty
+    alert_cooldown_minutes: int = 60
+
 
 settings = Settings()
