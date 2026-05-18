@@ -1,18 +1,23 @@
+"use client";
+
+import { useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 import { api } from "@/lib/api";
 import StationHistoryChart from "@/components/StationHistoryChart";
 
-export const dynamic = "force-dynamic";
+export default function StationPage() {
+  const { id } = useParams<{ id: string }>();
+  const { data: station, isLoading, error } = useQuery({
+    queryKey: ["station", id],
+    queryFn: () => api.station(id),
+    enabled: !!id,
+  });
 
-export default async function StationPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const station = await api.station(id);
+  if (isLoading) return <div className="p-8 text-sm text-[var(--color-brand-dark)]/60">Loading…</div>;
+  if (error || !station) return <div className="p-8 text-sm text-red-500">Failed to load station.</div>;
 
   return (
     <div className="max-w-3xl w-full mx-auto px-4 py-8 flex flex-col gap-6">
@@ -103,9 +108,7 @@ function Tile({
       ? "ring-[var(--color-brand-dark)]/40"
       : "ring-[var(--color-brand-border)]";
   return (
-    <div
-      className={`rounded-xl bg-white ring-1 ${ring} p-4 flex flex-col gap-1`}
-    >
+    <div className={`rounded-xl bg-white ring-1 ${ring} p-4 flex flex-col gap-1`}>
       <div className="text-xs uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">{label}</div>
       <div className="text-2xl font-semibold text-[var(--color-brand-dark)]">{value}</div>
     </div>

@@ -1,10 +1,19 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
-export const dynamic = "force-dynamic";
+export default function NetworkPage() {
+  const { data: summary, isLoading, error } = useQuery({
+    queryKey: ["networkSummary"],
+    queryFn: api.networkSummary,
+  });
 
-export default async function NetworkPage() {
-  const summary = await api.networkSummary();
+  if (isLoading) return <div className="p-8 text-sm text-[var(--color-brand-dark)]/60">Loading…</div>;
+  if (error || !summary) return <div className="p-8 text-sm text-red-500">Failed to load network data.</div>;
+
   const ok = summary.total - summary.empty - summary.full;
+
   return (
     <div className="max-w-3xl w-full mx-auto px-4 py-8 flex flex-col gap-6">
       <header>
