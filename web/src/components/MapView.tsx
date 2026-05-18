@@ -146,7 +146,10 @@ export default function MapView() {
   }, [stations]);
 
   return (
-    <div className="relative w-full h-[calc(100dvh-3rem)]">
+    <div
+      className="relative w-full"
+      style={{ height: "calc(100svh - 3rem)", minHeight: "70vh" }}
+    >
       <div ref={containerRef} className="w-full h-full" />
 
       <Legend />
