@@ -18,14 +18,14 @@ export default async function StationPage({
     <div className="max-w-3xl w-full mx-auto px-4 py-8 flex flex-col gap-6">
       <Link
         href="/"
-        className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1 w-fit"
+        className="text-sm text-[var(--color-brand-dark)]/70 hover:text-[var(--color-brand-dark)] flex items-center gap-1 w-fit transition-colors"
       >
         <ArrowLeft size={14} /> Back to map
       </Link>
 
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">{station.name}</h1>
-        <p className="text-xs text-zinc-500">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-brand-dark)]">{station.name}</h1>
+        <p className="text-xs text-[var(--color-brand-dark)]/60">
           ID {station.station_id} · capacity {station.capacity}
         </p>
       </header>
@@ -33,20 +33,23 @@ export default async function StationPage({
       <Fullness bikes={station.bikes} docks={station.docks} />
 
       <section className="grid grid-cols-3 gap-3">
-        <Tile label="Bikes available" value={station.bikes ?? "—"} accent="green" />
-        <Tile label="Docks available" value={station.docks ?? "—"} accent="blue" />
+        <Tile label="Bikes available" value={station.bikes ?? "—"} accent="brand" />
+        <Tile label="Docks available" value={station.docks ?? "—"} accent="brand-dark" />
         <Tile label="Capacity" value={station.capacity} />
       </section>
 
-      <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
+      <section className="rounded-xl border border-[var(--color-brand-border)] bg-white p-4">
         <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold">Last 24 hours</h2>
-          <span className="text-xs text-zinc-500">bikes (green) · docks (blue)</span>
+          <h2 className="text-sm font-semibold text-[var(--color-brand-dark)]">Last 24 hours</h2>
+          <span className="text-xs text-[var(--color-brand-dark)]/60">
+            <span className="inline-block w-2 h-2 rounded-full align-middle mr-1" style={{ backgroundColor: "#5fbcd2" }} />bikes
+            <span className="inline-block w-2 h-2 rounded-full align-middle ml-3 mr-1" style={{ backgroundColor: "#0e5e7a" }} />docks
+          </span>
         </div>
         <StationHistoryChart stationId={station.station_id} />
       </section>
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-[var(--color-brand-dark)]/60">
         Forecast curve and POI context land in M3 / M4.
       </p>
     </div>
@@ -58,7 +61,7 @@ function Fullness({ bikes, docks }: { bikes: number | null; docks: number | null
   const total = bikes + docks;
   if (total === 0) {
     return (
-      <div className="text-xs text-zinc-500">No live data yet for this station.</div>
+      <div className="text-xs text-[var(--color-brand-dark)]/60">No live data yet for this station.</div>
     );
   }
   const fill = bikes / total;
@@ -66,17 +69,17 @@ function Fullness({ bikes, docks }: { bikes: number | null; docks: number | null
   const dist = Math.abs(fill - 0.5);
   const color = dist < 0.2 ? "#16a34a" : dist < 0.4 ? "#f59e0b" : "#dc2626";
   return (
-    <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex flex-col gap-2">
+    <section className="rounded-xl border border-[var(--color-brand-border)] bg-white p-4 flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs uppercase tracking-wide text-zinc-500">Currently</span>
+        <span className="text-xs uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">Currently</span>
         <span className="text-2xl font-semibold" style={{ color }}>
           {pct}% full
         </span>
       </div>
-      <div className="h-2 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+      <div className="h-2 rounded-full bg-[var(--color-brand-tint)] overflow-hidden">
         <div className="h-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
-      <div className="flex justify-between text-[10px] text-zinc-500">
+      <div className="flex justify-between text-[10px] text-[var(--color-brand-dark)]/50">
         <span>No bikes</span>
         <span>No docks</span>
       </div>
@@ -91,20 +94,20 @@ function Tile({
 }: {
   label: string;
   value: number | string;
-  accent?: "green" | "blue";
+  accent?: "brand" | "brand-dark";
 }) {
   const ring =
-    accent === "green"
-      ? "ring-green-200 dark:ring-green-900"
-      : accent === "blue"
-      ? "ring-blue-200 dark:ring-blue-900"
-      : "ring-zinc-200 dark:ring-zinc-800";
+    accent === "brand"
+      ? "ring-[var(--color-brand)]/50"
+      : accent === "brand-dark"
+      ? "ring-[var(--color-brand-dark)]/40"
+      : "ring-[var(--color-brand-border)]";
   return (
     <div
-      className={`rounded-xl bg-white dark:bg-zinc-900 ring-1 ${ring} p-4 flex flex-col gap-1`}
+      className={`rounded-xl bg-white ring-1 ${ring} p-4 flex flex-col gap-1`}
     >
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="text-2xl font-semibold">{value}</div>
+      <div className="text-xs uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">{label}</div>
+      <div className="text-2xl font-semibold text-[var(--color-brand-dark)]">{value}</div>
     </div>
   );
 }

@@ -32,17 +32,18 @@ export default function RootLayout({
       <head>
         <link rel="stylesheet" href="/maplibre-gl.css" />
       </head>
-      <body className="min-h-full flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      <body className="min-h-full flex flex-col bg-white text-[var(--color-brand-dark)]">
         <Providers>
-          <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-950/70 backdrop-blur">
+          <header className="border-b border-[var(--color-brand-border)] bg-white/85 backdrop-blur">
             <div className="max-w-7xl mx-auto px-4 h-12 flex items-center justify-between">
-              <Link href="/" className="font-semibold tracking-tight">
-                Vélib Wizard
+              <Link href="/" className="font-semibold tracking-tight text-[var(--color-brand-dark)] flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-brand)]" />
+                Vélib <span className="text-[var(--color-brand)]">Wizard</span>
               </Link>
-              <nav className="flex gap-4 text-sm text-zinc-600 dark:text-zinc-400">
-                <Link href="/" className="hover:text-zinc-900 dark:hover:text-zinc-100">Map</Link>
-                <Link href="/network" className="hover:text-zinc-900 dark:hover:text-zinc-100">Network</Link>
-                <Link href="/status" className="hover:text-zinc-900 dark:hover:text-zinc-100">Status</Link>
+              <nav className="flex gap-5 text-sm text-[var(--color-brand-dark)]/70">
+                <Link href="/" className="hover:text-[var(--color-brand-dark)] transition-colors">Map</Link>
+                <Link href="/network" className="hover:text-[var(--color-brand-dark)] transition-colors">Network</Link>
+                <Link href="/status" className="hover:text-[var(--color-brand-dark)] transition-colors">Status</Link>
               </nav>
             </div>
           </header>

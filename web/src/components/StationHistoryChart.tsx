@@ -61,8 +61,8 @@ export default function StationHistoryChart({ stationId }: { stationId: string }
           <Line
             type="monotone"
             dataKey="bikes"
-            stroke="#16a34a"
-            strokeWidth={2}
+            stroke="#5fbcd2"
+            strokeWidth={2.4}
             dot={false}
             isAnimationActive={false}
             name="Bikes"
@@ -70,8 +70,8 @@ export default function StationHistoryChart({ stationId }: { stationId: string }
           <Line
             type="monotone"
             dataKey="docks"
-            stroke="#2563eb"
-            strokeWidth={2}
+            stroke="#0e5e7a"
+            strokeWidth={2.4}
             dot={false}
             isAnimationActive={false}
             name="Docks"

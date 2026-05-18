@@ -8,8 +8,8 @@ export default async function NetworkPage() {
   return (
     <div className="max-w-3xl w-full mx-auto px-4 py-8 flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Network summary</h1>
-        <p className="text-xs text-zinc-500 mt-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-brand-dark)]">Network summary</h1>
+        <p className="text-xs text-[var(--color-brand-dark)]/60 mt-1">
           {summary.last_ts ? `Last snapshot ${new Date(summary.last_ts).toLocaleString()}` : "No snapshots yet"}
         </p>
       </header>
@@ -17,9 +17,9 @@ export default async function NetworkPage() {
         <Tile label="Total" value={summary.total} />
         <Tile label="OK" value={ok} tone="green" />
         <Tile label="Empty" value={summary.empty} tone="red" />
-        <Tile label="Full" value={summary.full} tone="blue" />
+        <Tile label="Full" value={summary.full} tone="brand" />
       </section>
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-[var(--color-brand-dark)]/60">
         Hourly heatmap, neighborhood ranking, and the model-comparison panel arrive in M5.
       </p>
     </div>
@@ -33,20 +33,20 @@ function Tile({
 }: {
   label: string;
   value: number;
-  tone?: "green" | "red" | "blue";
+  tone?: "green" | "red" | "brand";
 }) {
   const ring =
     tone === "green"
-      ? "ring-green-200 dark:ring-green-900"
+      ? "ring-green-200"
       : tone === "red"
-      ? "ring-red-200 dark:ring-red-900"
-      : tone === "blue"
-      ? "ring-blue-200 dark:ring-blue-900"
-      : "ring-zinc-200 dark:ring-zinc-800";
+      ? "ring-red-200"
+      : tone === "brand"
+      ? "ring-[var(--color-brand)]/50"
+      : "ring-[var(--color-brand-border)]";
   return (
-    <div className={`rounded-xl bg-white dark:bg-zinc-900 ring-1 ${ring} p-4 flex flex-col gap-1`}>
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className="text-2xl font-semibold">{value.toLocaleString()}</div>
+    <div className={`rounded-xl bg-white ring-1 ${ring} p-4 flex flex-col gap-1`}>
+      <div className="text-xs uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">{label}</div>
+      <div className="text-2xl font-semibold text-[var(--color-brand-dark)]">{value.toLocaleString()}</div>
     </div>
   );
 }

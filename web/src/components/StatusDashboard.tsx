@@ -55,10 +55,10 @@ type Tone = "green" | "amber" | "red" | "zinc";
 
 function toneClasses(tone: Tone): { bg: string; ring: string; text: string } {
   return {
-    green: { bg: "bg-green-50 dark:bg-green-950/40", ring: "ring-green-200 dark:ring-green-900", text: "text-green-700 dark:text-green-300" },
-    amber: { bg: "bg-amber-50 dark:bg-amber-950/40", ring: "ring-amber-200 dark:ring-amber-900", text: "text-amber-700 dark:text-amber-300" },
-    red:   { bg: "bg-red-50 dark:bg-red-950/40", ring: "ring-red-200 dark:ring-red-900", text: "text-red-700 dark:text-red-300" },
-    zinc:  { bg: "bg-white dark:bg-zinc-900", ring: "ring-zinc-200 dark:ring-zinc-800", text: "text-zinc-900 dark:text-zinc-100" },
+    green: { bg: "bg-green-50", ring: "ring-green-200", text: "text-green-700" },
+    amber: { bg: "bg-amber-50", ring: "ring-amber-200", text: "text-amber-700" },
+    red:   { bg: "bg-red-50", ring: "ring-red-200", text: "text-red-700" },
+    zinc:  { bg: "bg-white", ring: "ring-[var(--color-brand-border)]", text: "text-[var(--color-brand-dark)]" },
   }[tone];
 }
 
@@ -92,7 +92,7 @@ export default function StatusDashboard() {
 
   if (isLoading) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-8 text-center text-zinc-500">
+      <div className="max-w-3xl mx-auto px-4 py-8 text-center text-[var(--color-brand-dark)]/60">
         Loading status…
       </div>
     );
@@ -102,16 +102,16 @@ export default function StatusDashboard() {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
         <BigBadge tone="red" label="Backend unreachable" />
-        <p className="text-sm text-zinc-500 mt-3 text-center">
+        <p className="text-sm text-[var(--color-brand-dark)]/70 mt-3 text-center">
           The status endpoint did not respond. Render service is likely sleeping or down.
         </p>
-        <p className="mt-2 text-xs text-zinc-400 text-center break-all">
+        <p className="mt-2 text-xs text-[var(--color-brand-dark)]/50 text-center break-all">
           {String(error ?? "unknown error")}
         </p>
         <div className="mt-6 flex justify-center">
           <button
             onClick={() => refetch()}
-            className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-md bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+            className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-md bg-[var(--color-brand)] text-white hover:bg-[var(--color-brand-hover)] transition-colors"
           >
             <RefreshCw size={14} /> Try again
           </button>
@@ -194,42 +194,43 @@ function StatusBody({
         />
       </section>
 
-      <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
+      <section className="rounded-xl border border-[var(--color-brand-border)] bg-white p-4">
         <div className="flex items-baseline justify-between mb-2">
-          <h2 className="text-sm font-semibold">Snapshot cadence · last 6 hours</h2>
-          <span className="text-xs text-zinc-500">per 15-minute bucket</span>
+          <h2 className="text-sm font-semibold text-[var(--color-brand-dark)]">Snapshot cadence · last 6 hours</h2>
+          <span className="text-xs text-[var(--color-brand-dark)]/60">per 15-minute bucket</span>
         </div>
         <div className="h-44">
           {sparkData.length === 0 ? (
-            <div className="h-full grid place-items-center text-sm text-zinc-500">
+            <div className="h-full grid place-items-center text-sm text-[var(--color-brand-dark)]/60">
               Not enough history yet.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={sparkData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgb(228 228 231 / 0.5)" />
-                <XAxis dataKey="label" fontSize={10} stroke="rgb(113 113 122)" minTickGap={20} />
-                <YAxis fontSize={10} stroke="rgb(113 113 122)" allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#cfe6ee" />
+                <XAxis dataKey="label" fontSize={10} stroke="#0e5e7a" minTickGap={20} />
+                <YAxis fontSize={10} stroke="#0e5e7a" allowDecimals={false} />
                 <Tooltip
                   contentStyle={{
                     fontSize: 11,
                     borderRadius: 8,
-                    border: "1px solid rgb(228 228 231)",
+                    border: "1px solid #cfe6ee",
                     padding: "6px 10px",
+                    color: "#0e5e7a",
                   }}
                 />
-                <Bar dataKey="n" fill="#16a34a" />
+                <Bar dataKey="n" fill="#5fbcd2" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
-        <p className="text-[11px] text-zinc-500 mt-1">
+        <p className="text-[11px] text-[var(--color-brand-dark)]/60 mt-1">
           Each bar should be ≈ {fmtNumber(d.stations * 3)} (one snapshot per station, three ticks per 15-min bucket).
         </p>
       </section>
 
-      <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex flex-col gap-3">
-        <h2 className="text-sm font-semibold flex items-center gap-2">
+      <section className="rounded-xl border border-[var(--color-brand-border)] bg-white p-4 flex flex-col gap-3">
+        <h2 className="text-sm font-semibold flex items-center gap-2 text-[var(--color-brand-dark)]">
           <Activity size={14} /> External dashboards
         </h2>
         <ExtLink href="https://dashboard.render.com" label="Render" hint="logs, deploys, service status" />
@@ -262,12 +263,12 @@ function BigBadge({
       <Icon className={t.text} size={32} />
       <div className="flex-1 min-w-0">
         <div className={`text-xl sm:text-2xl font-semibold ${t.text}`}>{label}</div>
-        {sub && <div className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{sub}</div>}
+        {sub && <div className="text-xs text-[var(--color-brand-dark)]/70 mt-0.5">{sub}</div>}
       </div>
       {onRefresh && (
         <button
           onClick={onRefresh}
-          className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 p-2"
+          className="text-[var(--color-brand-dark)]/60 hover:text-[var(--color-brand-dark)] p-2 transition-colors"
           aria-label="Refresh"
         >
           <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
@@ -291,9 +292,9 @@ function Tile({
   const t = toneClasses(tone);
   return (
     <div className={`rounded-xl ${t.bg} ring-1 ${t.ring} p-3 sm:p-4 flex flex-col gap-1`}>
-      <div className="text-[10px] sm:text-xs uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className="text-[10px] sm:text-xs uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">{label}</div>
       <div className={`text-lg sm:text-xl font-semibold ${t.text}`}>{value}</div>
-      {sub && <div className="text-[10px] sm:text-xs text-zinc-500 leading-snug">{sub}</div>}
+      {sub && <div className="text-[10px] sm:text-xs text-[var(--color-brand-dark)]/60 leading-snug">{sub}</div>}
     </div>
   );
 }
@@ -304,13 +305,13 @@ function ExtLink({ href, label, hint }: { href: string; label: string; hint: str
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="flex items-center justify-between text-sm border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+      className="flex items-center justify-between text-sm border border-[var(--color-brand-border)] rounded-md px-3 py-2 hover:bg-[var(--color-brand-tint)] transition-colors"
     >
       <div className="flex flex-col">
-        <span className="font-medium">{label}</span>
-        <span className="text-xs text-zinc-500">{hint}</span>
+        <span className="font-semibold text-[var(--color-brand-dark)]">{label}</span>
+        <span className="text-xs text-[var(--color-brand-dark)]/60">{hint}</span>
       </div>
-      <ExternalLink size={14} className="text-zinc-400" />
+      <ExternalLink size={14} className="text-[var(--color-brand)]" />
     </a>
   );
 }
