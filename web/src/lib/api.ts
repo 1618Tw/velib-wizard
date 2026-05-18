@@ -49,8 +49,16 @@ export type StatusOverview = {
   sparkline: { bucket: string; n: number }[];
 };
 
+function assertJSON(res: Response, path: string) {
+  const ct = res.headers.get("content-type") ?? "";
+  if (!ct.includes("application/json")) {
+    throw new Error(`API asleep or unreachable (got HTML instead of JSON) on ${path}`);
+  }
+}
+
 async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { ...init });
+  assertJSON(res, path);
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText} on ${path}`);
   }
@@ -61,6 +69,7 @@ async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
  *  intentionally returns 503 with a valid payload when data is stale. */
 async function getJSONLenient<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
+  assertJSON(res, path);
   return res.json() as Promise<T>;
 }
 
