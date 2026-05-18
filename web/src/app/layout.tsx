@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -36,9 +37,15 @@ export default function RootLayout({
         <Providers>
           <header className="border-b border-[var(--color-brand-border)] bg-white/85 backdrop-blur">
             <div className="max-w-7xl mx-auto px-4 h-12 flex items-center justify-between">
-              <Link href="/" className="font-semibold tracking-tight text-[var(--color-brand-dark)] flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-[var(--color-brand)]" />
-                Vélib <span className="text-[var(--color-brand)]">Wizard</span>
+              <Link href="/" aria-label="The Velib Wizard — home" className="flex items-center">
+                <Image
+                  src="/logo-mark.png"
+                  alt="The Velib Wizard"
+                  width={482}
+                  height={512}
+                  priority
+                  className="h-9 w-auto"
+                />
               </Link>
               <nav className="flex gap-5 text-sm text-[var(--color-brand-dark)]/70">
                 <Link href="/" className="hover:text-[var(--color-brand-dark)] transition-colors">Map</Link>
