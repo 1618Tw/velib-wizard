@@ -1,5 +1,9 @@
 "use client";
 
+export function generateStaticParams() {
+  return [];
+}
+
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
