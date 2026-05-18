@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from collectors.gbfs import collect_station_information, collect_station_status
+from collectors.retention import downsample_and_prune
 from config import settings
 from db.session import get_session
 from notifier import alerts_enabled, send_email_alert
@@ -316,3 +317,8 @@ def cron_collect_info(session: Session = Depends(get_session)) -> dict:
 def cron_collect_status(session: Session = Depends(get_session)) -> dict:
     n = collect_station_status(session)
     return {"inserted": n}
+
+
+@app.post("/api/cron/retention", dependencies=[Depends(require_cron_secret)])
+def cron_retention(session: Session = Depends(get_session)) -> dict:
+    return downsample_and_prune(session)

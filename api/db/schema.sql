@@ -26,6 +26,24 @@ CREATE TABLE IF NOT EXISTS status_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_status_ts ON status_snapshots(ts DESC);
 
+-- Hourly downsample of status_snapshots. Populated by the retention job once
+-- the raw window (5 days) has rolled past an hour bucket. Trades intra-hour
+-- resolution for unbounded history at the same byte cost as ~5 raw rows.
+CREATE TABLE IF NOT EXISTS status_hourly (
+    station_id      TEXT NOT NULL REFERENCES stations(station_id),
+    hour_ts         TIMESTAMPTZ NOT NULL,
+    bikes_avg       REAL NOT NULL,
+    docks_avg       REAL NOT NULL,
+    bikes_min       INTEGER NOT NULL,
+    bikes_max       INTEGER NOT NULL,
+    docks_min       INTEGER NOT NULL,
+    docks_max       INTEGER NOT NULL,
+    n               INTEGER NOT NULL,
+    PRIMARY KEY (station_id, hour_ts)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hourly_hour ON status_hourly(hour_ts DESC);
+
 CREATE TABLE IF NOT EXISTS weather_hourly (
     ts              TIMESTAMPTZ PRIMARY KEY,
     temp_c          REAL,
