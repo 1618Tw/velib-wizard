@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Vélib Wizard — Workflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: 1400px 1000px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1400px; height: 1000px;
+    background: #fafaf7;
+    font-family: 'Kalam', 'Comic Sans MS', cursive;
+    color: #1a1a1a;
+    -webkit-font-smoothing: antialiased;
+  }
+  svg { display: block; width: 1400px; height: 1000px; }
+
+  /* shared styles via SVG */
+  .stroke   { fill: none; stroke: #1a1a1a; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .stroke-thin { fill: none; stroke: #1a1a1a; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .box      { fill: #ffffff; }
+  .group-box{ fill: none; stroke: #1a1a1a; stroke-width: 1.8; stroke-dasharray: 0; }
+  .label-lg { font-family: 'Kalam', cursive; font-weight: 700; font-size: 22px; fill: #1a1a1a; }
+  .label-md { font-family: 'Kalam', cursive; font-weight: 700; font-size: 19px; fill: #1a1a1a; }
+  .label-sm { font-family: 'Kalam', cursive; font-weight: 400; font-size: 14px; fill: #475569; }
+  .label-xs { font-family: 'Kalam', cursive; font-weight: 400; font-size: 13px; fill: #64748b; }
+  .group-title { font-family: 'Kalam', cursive; font-weight: 700; font-size: 20px; fill: #1a1a1a; }
+  .title-xl { font-family: 'Kalam', cursive; font-weight: 700; font-size: 44px; fill: #1a1a1a; }
+  .title-sub{ font-family: 'Kalam', cursive; font-weight: 400; font-size: 22px; fill: #475569; }
+
+  .hatch-fill { fill: url(#hatch); }
+  .green-accent { fill: #16a34a; }
+</style>
+</head>
+<body>
+
+<svg viewBox="0 0 1400 1000" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- hatched pattern for "Trained Model" -->
+    <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+      <rect width="8" height="8" fill="#ffffff"/>
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#94a3b8" stroke-width="1.4"/>
+    </pattern>
+
+    <!-- arrowhead marker -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1a1a1a"/>
+    </marker>
+  </defs>
+
+  <!-- ========== TITLE ========== -->
+  <text x="60" y="70" class="title-xl">Vélib Wizard — how the pipeline works</text>
+  <text x="60" y="100" class="title-sub">Paris bike-share dashboard + 2h fullness forecast · all on free tiers</text>
+
+  <!-- ========== TOP ROW ========== -->
+
+  <!-- Data Ingestion (FastAPI collectors) -->
+  <rect x="60"  y="180" width="180" height="100" rx="6" class="box stroke"/>
+  <text x="150" y="220" text-anchor="middle" class="label-lg">Data</text>
+  <text x="150" y="248" text-anchor="middle" class="label-lg">Ingestion</text>
+  <text x="150" y="270" text-anchor="middle" class="label-xs">FastAPI collectors</text>
+
+  <!-- Database cylinder under ingestion -->
+  <g transform="translate(60,400)">
+    <ellipse cx="55" cy="10" rx="50" ry="12" class="box stroke"/>
+    <path d="M 5 10 L 5 90 Q 5 102 55 102 Q 105 102 105 90 L 105 10" class="stroke" fill="#ffffff"/>
+    <ellipse cx="55" cy="10" rx="50" ry="12" class="stroke-thin" fill="none"/>
+    <path d="M 5 30 Q 30 42 55 42 Q 80 42 105 30" class="stroke-thin"/>
+    <path d="M 5 50 Q 30 62 55 62 Q 80 62 105 50" class="stroke-thin"/>
+  </g>
+  <text x="115" y="412" text-anchor="middle" class="label-sm">GBFS · Open-Meteo</text>
+  <text x="115" y="430" text-anchor="middle" class="label-sm">OSM</text>
+
+  <!-- arrows: sources cylinder <-> ingestion -->
+  <path d="M 115 400 L 115 290" class="stroke" marker-end="url(#arrow)"/>
+  <path d="M 150 290 L 150 400" class="stroke" marker-end="url(#arrow)" stroke-dasharray="4 4"/>
+
+  <!-- OFFLINE group -->
+  <rect x="295" y="155" width="220" height="155" rx="6" class="group-box"/>
+  <text x="305" y="145" class="group-title">Offline</text>
+
+  <!-- Data Analysis -->
+  <rect x="320" y="180" width="170" height="100" rx="6" class="box stroke"/>
+  <text x="405" y="220" text-anchor="middle" class="label-lg">Feature</text>
+  <text x="405" y="248" text-anchor="middle" class="label-lg">Engineering</text>
+  <text x="405" y="270" text-anchor="middle" class="label-xs">hour-of-week · weather · POI</text>
+
+  <!-- arrow Ingestion -> Offline -->
+  <path d="M 240 230 L 320 230" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- Data Preparation -->
+  <rect x="555" y="180" width="160" height="100" rx="6" class="box stroke"/>
+  <text x="635" y="220" text-anchor="middle" class="label-lg">Data</text>
+  <text x="635" y="248" text-anchor="middle" class="label-lg">Preparation</text>
+  <text x="635" y="270" text-anchor="middle" class="label-xs">train/test split</text>
+
+  <!-- arrow Offline -> Data Prep -->
+  <path d="M 515 230 L 555 230" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- MODEL TRAINING & EVAL group -->
+  <rect x="755" y="155" width="380" height="155" rx="6" class="group-box"/>
+  <text x="765" y="145" class="group-title">Model Training &amp; Experimentation</text>
+
+  <!-- Model Training -->
+  <rect x="775" y="180" width="155" height="100" rx="6" class="box stroke"/>
+  <text x="852" y="220" text-anchor="middle" class="label-lg">Model</text>
+  <text x="852" y="248" text-anchor="middle" class="label-lg">Training</text>
+  <text x="852" y="270" text-anchor="middle" class="label-xs">LightGBM v2</text>
+
+  <!-- Model Evaluation -->
+  <rect x="955" y="180" width="160" height="100" rx="6" class="box stroke"/>
+  <text x="1035" y="215" text-anchor="middle" class="label-md">Evaluation</text>
+  <text x="1035" y="240" text-anchor="middle" class="label-md">&amp; Validation</text>
+  <text x="1035" y="266" text-anchor="middle" class="label-xs">backtest · MAE / pinball</text>
+
+  <!-- bidirectional arrows training <-> eval -->
+  <path d="M 932 215 L 953 215" class="stroke" marker-end="url(#arrow)"/>
+  <path d="M 953 245 L 932 245" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- arrow Data Prep -> Training group -->
+  <path d="M 715 230 L 775 230" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- Trained Model (hatched) -->
+  <rect x="900" y="370" width="170" height="80" rx="6" class="hatch-fill stroke"/>
+  <text x="985" y="400" text-anchor="middle" class="label-md">Trained</text>
+  <text x="985" y="425" text-anchor="middle" class="label-md">Model</text>
+  <text x="985" y="445" text-anchor="middle" class="label-xs">.pkl artifact</text>
+
+  <!-- arrow Eval -> Trained -->
+  <path d="M 1035 280 L 985 370" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- Model Registry cylinder -->
+  <g transform="translate(1140,370)">
+    <ellipse cx="55" cy="12" rx="55" ry="14" class="box stroke"/>
+    <path d="M 0 12 L 0 75 Q 0 89 55 89 Q 110 89 110 75 L 110 12" class="stroke" fill="#ffffff"/>
+    <ellipse cx="55" cy="12" rx="55" ry="14" class="stroke-thin" fill="none"/>
+    <path d="M 0 35 Q 30 49 55 49 Q 80 49 110 35" class="stroke-thin"/>
+  </g>
+  <text x="1195" y="490" text-anchor="middle" class="label-md">Model Registry</text>
+  <text x="1195" y="510" text-anchor="middle" class="label-xs">Supabase Storage</text>
+
+  <!-- arrow Trained -> Registry -->
+  <path d="M 1070 410 L 1140 410" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- Model Serving (Render / FastAPI) to the right of the train/eval group -->
+  <rect x="1175" y="180" width="170" height="100" rx="6" class="box stroke" fill="#ffffff"/>
+  <text x="1260" y="220" text-anchor="middle" class="label-lg">Model</text>
+  <text x="1260" y="248" text-anchor="middle" class="label-lg">Serving</text>
+  <text x="1260" y="270" text-anchor="middle" class="label-xs">Render · FastAPI</text>
+
+  <!-- arrow Registry -> Serving (load .pkl on boot) -->
+  <path d="M 1260 370 L 1260 290" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- Prediction Service -->
+  <rect x="1175" y="560" width="170" height="100" rx="6" class="box stroke" fill="#ffffff"/>
+  <text x="1260" y="595" text-anchor="middle" class="label-lg">Prediction</text>
+  <text x="1260" y="623" text-anchor="middle" class="label-lg">Service</text>
+  <text x="1260" y="645" text-anchor="middle" class="label-xs">/api/.../forecast</text>
+
+  <!-- arrow Serving -> Prediction -->
+  <path d="M 1260 290 L 1260 560" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- Next.js frontend consuming the API -->
+  <rect x="900" y="560" width="200" height="100" rx="6" class="box stroke" fill="#ffffff"/>
+  <text x="1000" y="595" text-anchor="middle" class="label-lg">Next.js</text>
+  <text x="1000" y="623" text-anchor="middle" class="label-lg">Dashboard</text>
+  <text x="1000" y="645" text-anchor="middle" class="label-xs">React · MapLibre · Cloudflared</text>
+
+  <!-- arrow Prediction -> Frontend -->
+  <path d="M 1175 610 L 1100 610" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- ========== BOTTOM ROW (feedback loop) ========== -->
+
+  <!-- Model Performance Monitoring -->
+  <rect x="630" y="780" width="240" height="100" rx="6" class="box stroke"/>
+  <text x="750" y="815" text-anchor="middle" class="label-lg">Model Performance</text>
+  <text x="750" y="843" text-anchor="middle" class="label-lg">Monitoring</text>
+  <text x="750" y="865" text-anchor="middle" class="label-xs">/health · email alerts on staleness</text>
+
+  <!-- arrow Prediction -> Monitoring -->
+  <path d="M 1260 660 L 1260 830 L 870 830" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- Trigger (oval) -->
+  <ellipse cx="385" cy="830" rx="120" ry="50" class="box stroke"/>
+  <text x="385" y="822" text-anchor="middle" class="label-lg">Trigger</text>
+  <text x="385" y="850" text-anchor="middle" class="label-xs">cron-job.org × 4</text>
+
+  <!-- arrow Monitoring -> Trigger -->
+  <path d="M 630 830 L 505 830" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- arrow Trigger -> Data Ingestion (closes loop, routed around sources) -->
+  <path d="M 270 808 Q 20 800 20 230 L 60 230" class="stroke" marker-end="url(#arrow)"/>
+
+  <!-- ========== CRON DETAIL CALLOUT ========== -->
+  <g transform="translate(60,700)">
+    <text x="0" y="0" class="label-md">↓ The 4 cron jobs (each carries X-Cron-Secret)</text>
+    <text x="0"  y="30" class="label-sm"><tspan font-weight="700">• every 4 min</tspan>  GET  /health  →  keep Render warm + alert</text>
+    <text x="0"  y="52" class="label-sm"><tspan font-weight="700">• every 5 min</tspan>  POST /api/cron/collect-status  →  ~1.5k rows</text>
+    <text x="0"  y="74" class="label-sm"><tspan font-weight="700">• daily 04:00</tspan>  POST /api/cron/collect-info    →  new stations</text>
+    <text x="0"  y="96" class="label-sm"><tspan font-weight="700">• on demand</tspan>     POST /api/cron/test-alert      →  SMTP smoke test</text>
+  </g>
+
+  <!-- ========== FOOTER BADGES ========== -->
+  <g transform="translate(60,940)">
+    <rect x="0" y="0" width="200" height="32" rx="16" fill="#dcfce7" stroke="#16a34a" stroke-width="1.8"/>
+    <text x="100" y="22" text-anchor="middle" class="label-md" fill="#14532d">$0 / month · free tiers</text>
+
+    <rect x="220" y="0" width="180" height="32" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.8"/>
+    <text x="310" y="22" text-anchor="middle" class="label-sm" fill="#1a1a1a">1,511 stations live</text>
+
+    <rect x="420" y="0" width="180" height="32" rx="16" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.8"/>
+    <text x="510" y="22" text-anchor="middle" class="label-sm" fill="#1a1a1a">~432k rows / day</text>
+
+    <text x="1340" y="22" text-anchor="end" class="label-sm">Vélib Wizard · 2026</text>
+  </g>
+
+</svg>
+</body>
+</html>

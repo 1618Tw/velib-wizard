@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Vélib Wizard — Post infographic</title>
+<style>
+  @page { size: 1080px 1350px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1080px; height: 1350px;
+    font-family: -apple-system, "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #0f172a;
+    background: #fafafa;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    width: 1080px; height: 1350px;
+    padding: 56px 56px 48px;
+    display: flex; flex-direction: column;
+    background:
+      radial-gradient(120% 80% at 0% 0%, rgba(22,163,74,0.08), transparent 60%),
+      radial-gradient(80% 60% at 100% 100%, rgba(99,102,241,0.06), transparent 60%),
+      #fafafa;
+  }
+
+  /* HERO */
+  .hero { display: flex; flex-direction: column; gap: 14px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 14px; font-weight: 600;
+    color: #16a34a; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .eyebrow .dot { width: 10px; height: 10px; border-radius: 50%; background: #16a34a; }
+  h1 {
+    font-size: 78px; line-height: 0.95; letter-spacing: -0.04em;
+    font-weight: 800;
+  }
+  .subtitle {
+    font-size: 26px; color: #475569; line-height: 1.25; max-width: 880px;
+    font-weight: 400; margin-top: 4px;
+  }
+
+  /* FEATURE PILLS */
+  .pills { display: flex; gap: 14px; margin-top: 30px; flex-wrap: wrap; }
+  .pill {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 12px 20px;
+    font-size: 18px;
+    font-weight: 500;
+    color: #0f172a;
+    display: inline-flex; align-items: center; gap: 10px;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  }
+  .pill .num { color: #16a34a; font-weight: 700; }
+
+  /* DIAGRAM */
+  .diagram {
+    margin-top: 36px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 22px;
+    padding: 28px 24px;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  }
+  .flow {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+  }
+  .node {
+    flex: 1;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .node.amber { background: #fef3c7; border-color: #fcd34d; }
+  .node.blue { background: #dbeafe; border-color: #93c5fd; }
+  .node.green { background: #dcfce7; border-color: #86efac; }
+  .node.purple { background: #f3e8ff; border-color: #d8b4fe; }
+  .node-label { font-size: 12px; color: #64748b; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 600; }
+  .node-name { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .node-hint { font-size: 12px; color: #475569; margin-top: 4px; line-height: 1.25; }
+  .arrow {
+    font-size: 24px; color: #94a3b8; font-weight: 600;
+    flex: 0 0 auto;
+  }
+  .diagram-caption {
+    margin-top: 18px;
+    text-align: center; font-size: 14px; color: #64748b;
+  }
+  .diagram-caption b { color: #0f172a; font-weight: 600; }
+
+  /* TOOLS */
+  .tools-section {
+    margin-top: 28px; flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+  }
+  .tools-title {
+    font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase;
+    font-weight: 700; color: #64748b;
+    margin-bottom: 14px;
+  }
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  .tool-col {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 14px 14px 16px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .tool-col h3 {
+    font-size: 12px; font-weight: 700; color: #16a34a;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .tool-col ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .tool-col li {
+    font-size: 14px; color: #0f172a; line-height: 1.25;
+  }
+  .tool-col li .role {
+    display: block;
+    font-size: 11px; color: #64748b; font-weight: 400;
+    margin-top: 1px;
+  }
+  .tool-col li b { font-weight: 600; }
+
+  /* FOOTER STATS */
+  .footer {
+    margin-top: 24px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .stat {
+    background: #0f172a;
+    color: #fafafa;
+    border-radius: 12px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .stat .v { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; }
+  .stat .l { font-size: 11px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 1px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="eyebrow"><span class="dot"></span>Personal project · 2026</div>
+    <h1>Vélib Wizard</h1>
+    <div class="subtitle">
+      A live dashboard for Paris bike-share stations, with a 2-hour fullness forecast — built on free-tier infrastructure.
+    </div>
+
+    <div class="pills">
+      <div class="pill">🗺️ <span><span class="num">1,511</span> stations live on a map</span></div>
+      <div class="pill">📥 Snapshot every <span class="num">5 min</span></div>
+      <div class="pill">🤖 2h forecast (ML, in progress)</div>
+    </div>
+  </div>
+
+  <!-- DIAGRAM -->
+  <div class="diagram">
+    <div class="flow">
+      <div class="node amber">
+        <div class="node-label">External</div>
+        <div class="node-name">Open data</div>
+        <div class="node-hint">GBFS · OSM · Open-Meteo</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node blue">
+        <div class="node-label">Backend</div>
+        <div class="node-name">FastAPI</div>
+        <div class="node-hint">collect · serve · forecast</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node green">
+        <div class="node-label">Storage</div>
+        <div class="node-name">Postgres</div>
+        <div class="node-hint">on Supabase</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node purple">
+        <div class="node-label">Frontend</div>
+        <div class="node-name">Next.js + MapLibre</div>
+        <div class="node-hint">live map · forecast curves</div>
+      </div>
+    </div>
+    <div class="diagram-caption">
+      A <b>cron service</b> wakes the backend every 5 min so collection runs 24/7 without a laptop being on.
+    </div>
+  </div>
+
+  <!-- TOOLS -->
+  <div class="tools-section">
+    <div class="tools-title">Powered by</div>
+    <div class="tools-grid">
+
+      <div class="tool-col">
+        <h3>Data</h3>
+        <ul>
+          <li><b>Vélib GBFS</b><span class="role">public station feed</span></li>
+          <li><b>Open-Meteo</b><span class="role">weather, hist. + forecast</span></li>
+          <li><b>OpenStreetMap</b><span class="role">POI context per station</span></li>
+          <li><b>Carto</b><span class="role">basemap tiles</span></li>
+        </ul>
+      </div>
+
+      <div class="tool-col">
+        <h3>Backend</h3>
+        <ul>
+          <li><b>Python 3.13</b><span class="role">runtime</span></li>
+          <li><b>FastAPI + uvicorn</b><span class="role">HTTP API</span></li>
+          <li><b>SQLAlchemy + psycopg</b><span class="role">Postgres driver</span></li>
+          <li><b>httpx</b><span class="role">GBFS client</span></li>
+          <li><b>LightGBM</b><span class="role">forecast model (M3)</span></li>
+        </ul>
+      </div>
+
+      <div class="tool-col">
+        <h3>Frontend</h3>
+        <ul>
+          <li><b>Next.js 16</b><span class="role">React framework</span></li>
+          <li><b>TypeScript</b><span class="role">type safety</span></li>
+          <li><b>Tailwind 4</b><span class="role">styling</span></li>
+          <li><b>MapLibre GL</b><span class="role">WebGL map</span></li>
+          <li><b>TanStack Query</b><span class="role">data fetching</span></li>
+          <li><b>Recharts</b><span class="role">time-series charts</span></li>
+        </ul>
+      </div>
+
+      <div class="tool-col">
+        <h3>Hosting</h3>
+        <ul>
+          <li><b>Render</b><span class="role">FastAPI service</span></li>
+          <li><b>Supabase</b><span class="role">managed Postgres</span></li>
+          <li><b>cron-job.org</b><span class="role">5-min wake + collect</span></li>
+          <li><b>Cloudflared</b><span class="role">quick public tunnel</span></li>
+          <li><b>GitHub</b><span class="role">source + CI trigger</span></li>
+        </ul>
+      </div>
+
+      <div class="tool-col">
+        <h3>Dev tools</h3>
+        <ul>
+          <li><b>Claude Code</b><span class="role">pair programming</span></li>
+          <li><b>git + gh CLI</b><span class="role">version control</span></li>
+          <li><b>Postgres.app</b><span class="role">local DB</span></li>
+          <li><b>Turbopack</b><span class="role">bundler</span></li>
+          <li><b>Chrome DevTools</b><span class="role">debugging</span></li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="stat"><div class="v">2</div><div class="l">Services</div></div>
+    <div class="stat"><div class="v">5</div><div class="l">Postgres tables</div></div>
+    <div class="stat"><div class="v">~432k</div><div class="l">Daily snapshots</div></div>
+    <div class="stat"><div class="v">$0</div><div class="l">Monthly cost</div></div>
+  </div>
+
+</div>
+</body>
+</html>
