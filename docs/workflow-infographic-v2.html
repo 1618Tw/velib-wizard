@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Vélib Wizard — How it works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --brand:        #5fbcd2;
+    --brand-dark:   #0e5e7a;
+    --brand-tint:   #e8f4f8;
+    --brand-border: #cfe6ee;
+    --wip:          #f59e0b;
+    --wip-tint:     #fef3c7;
+    --wip-dark:     #78350f;
+    --ink:          #0f172a;
+    --muted:        #475569;
+    --soft:         #64748b;
+  }
+  @page { size: 1080px 1350px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1080px; height: 1350px;
+    background: #ffffff;
+    font-family: 'Inter', -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    width: 1080px; height: 1350px;
+    padding: 56px 56px 48px;
+    display: flex; flex-direction: column;
+  }
+
+  /* HEADER */
+  .header { margin-bottom: 28px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700;
+    color: var(--brand-dark); letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); }
+  h1 {
+    font-size: 56px; line-height: 1.0; letter-spacing: -0.03em;
+    font-weight: 800; margin-top: 10px;
+    color: var(--ink);
+  }
+  h1 .accent { color: var(--brand); }
+  .subtitle {
+    font-size: 19px; color: var(--muted); line-height: 1.4;
+    font-weight: 400; margin-top: 12px; max-width: 880px;
+  }
+  .subtitle b { color: var(--ink); font-weight: 600; }
+
+  /* COLUMN HEADERS */
+  .col-headers {
+    display: grid;
+    grid-template-columns: 200px 1fr 220px;
+    gap: 16px;
+    margin-bottom: 10px;
+    font-size: 13px; font-weight: 700; color: var(--soft);
+    letter-spacing: 0.10em; text-transform: uppercase;
+  }
+  .col-headers .h-left  { padding-left: 8px; }
+  .col-headers .h-mid   { padding-left: 16px; }
+  .col-headers .h-right { padding-left: 16px; }
+
+  /* PHASE ROWS */
+  .phases { display: flex; flex-direction: column; gap: 14px; }
+  .phase {
+    display: grid;
+    grid-template-columns: 200px 1fr 220px;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  /* LEFT — phase descriptor */
+  .phase-left {
+    background: #ffffff;
+    border: 2px solid var(--brand);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+  .phase-num {
+    position: absolute; top: 10px; right: 14px;
+    font-size: 13px; color: var(--soft); font-weight: 700;
+  }
+  .phase-name {
+    font-size: 17px; font-weight: 700; letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-right: 18px;
+    color: var(--brand-dark);
+  }
+  .phase-goal-label {
+    font-size: 11px; font-weight: 700;
+    color: var(--soft); letter-spacing: 0.08em; text-transform: uppercase;
+    margin-top: 10px;
+  }
+  .phase-goal-text {
+    font-size: 13px; color: #334155; line-height: 1.35;
+    margin-top: 2px;
+  }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: auto;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    align-self: flex-start;
+  }
+  .status-pill .pulse { width: 7px; height: 7px; border-radius: 50%; }
+  .status-live { background: var(--brand-tint); color: var(--brand-dark); }
+  .status-live .pulse { background: var(--brand); }
+  .status-wip  { background: var(--wip-tint); color: var(--wip-dark); }
+  .status-wip  .pulse { background: var(--wip); }
+
+  /* MIDDLE — task pipeline */
+  .phase-mid {
+    background: #ffffff;
+    border: 2px solid var(--brand);
+    border-radius: 14px;
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .task {
+    flex: 1;
+    background: var(--brand);
+    color: #ffffff;
+    border-radius: 8px;
+    padding: 14px 10px;
+    text-align: center;
+    font-size: 14px; font-weight: 700;
+    line-height: 1.25;
+    min-height: 64px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .task.wip { background: var(--wip); }
+  .task .small {
+    display: block; font-size: 11px; font-weight: 400;
+    opacity: 0.9; margin-top: 3px;
+  }
+  .arrow {
+    flex: 0 0 auto;
+    color: var(--soft); font-size: 18px; font-weight: 700;
+  }
+
+  /* RIGHT — outcome */
+  .phase-right {
+    background: var(--brand-dark);
+    color: #ffffff;
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .phase-right.wip { background: var(--wip); }
+  .outcome-label {
+    font-size: 11px; font-weight: 700;
+    opacity: 0.75; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .outcome-big {
+    font-size: 28px; font-weight: 800; letter-spacing: -0.01em;
+    margin-top: 4px; line-height: 1.05;
+  }
+  .outcome-text {
+    font-size: 14px; line-height: 1.3;
+    margin-top: 4px;
+  }
+  .outcome-text.bold { font-weight: 700; font-size: 16px; }
+  .outcome-headline {
+    font-size: 20px; font-weight: 800; letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin-top: 6px;
+  }
+
+  /* SUMMARY CALLOUT */
+  .summary {
+    margin-top: 24px;
+    background: var(--brand-dark);
+    color: #f8fafc;
+    border-radius: 18px;
+    padding: 24px 28px;
+  }
+  .summary-label {
+    font-size: 12px; font-weight: 700;
+    color: var(--brand); letter-spacing: 0.12em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .summary-text {
+    font-size: 20px; font-weight: 500; line-height: 1.4; letter-spacing: -0.01em;
+  }
+  .summary-text .hilite { color: var(--brand); font-weight: 700; }
+
+  /* STATUS STRIP */
+  .strip {
+    margin-top: 14px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .stat {
+    background: var(--brand-tint);
+    border: 1px solid var(--brand-border);
+    border-radius: 12px;
+    padding: 11px 14px;
+  }
+  .stat .l {
+    font-size: 11px; color: var(--brand-dark);
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700;
+  }
+  .stat .v {
+    font-size: 20px; font-weight: 800; margin-top: 2px;
+    color: var(--ink);
+  }
+  .stat .v.wip { color: var(--wip); }
+
+  /* FOOTER */
+  .footer {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--brand-border);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+  }
+  .stack {
+    font-size: 13px; color: var(--muted); line-height: 1.5;
+  }
+  .stack b { color: var(--ink); font-weight: 700; }
+  .badge {
+    background: var(--brand); color: #ffffff;
+    border-radius: 999px; padding: 6px 14px;
+    font-size: 13px; font-weight: 700;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="eyebrow"><span class="dot"></span>Personal project · 2026</div>
+    <h1>Vélib <span class="accent">Wizard</span></h1>
+    <div class="subtitle">
+      A live dashboard for all <b>1,512 Paris bike-share stations</b>.<br/>
+      And a small wizard that will soon tell you <b>if a bike will be there up to 10 hours from now</b> — before you even pedal.
+    </div>
+  </div>
+
+  <!-- COLUMN HEADERS -->
+  <div class="col-headers">
+    <div class="h-left">Phase</div>
+    <div class="h-mid">What it does</div>
+    <div class="h-right">Outcome</div>
+  </div>
+
+  <!-- PHASES -->
+  <div class="phases">
+
+    <!-- PHASE 1: COLLECTION -->
+    <div class="phase">
+      <div class="phase-left">
+        <div class="phase-num">1</div>
+        <div class="phase-name">Data collection</div>
+        <div class="phase-goal-label">Goal</div>
+        <div class="phase-goal-text">Listen to Paris in real time.</div>
+        <div class="status-pill status-live"><span class="pulse"></span>LIVE</div>
+      </div>
+      <div class="phase-mid">
+        <div class="task">Vélib API<span class="small">official feed</span></div>
+        <div class="arrow">→</div>
+        <div class="task">Cron job<span class="small">every 5 min</span></div>
+        <div class="arrow">→</div>
+        <div class="task">Backend<span class="small">saves it all</span></div>
+      </div>
+      <div class="phase-right">
+        <div class="outcome-label">Every day</div>
+        <div class="outcome-big">432,000</div>
+        <div class="outcome-text">new readings saved</div>
+      </div>
+    </div>
+
+    <!-- PHASE 2: STORAGE -->
+    <div class="phase">
+      <div class="phase-left">
+        <div class="phase-num">2</div>
+        <div class="phase-name">Smart storage</div>
+        <div class="phase-goal-label">Goal</div>
+        <div class="phase-goal-text">Don't blow up the free storage.</div>
+        <div class="status-pill status-live"><span class="pulse"></span>LIVE</div>
+      </div>
+      <div class="phase-mid">
+        <div class="task">Database<span class="small">Postgres</span></div>
+        <div class="arrow">→</div>
+        <div class="task">Nightly cleanup<span class="small">once a day</span></div>
+        <div class="arrow">→</div>
+        <div class="task">Hourly summary<span class="small">for old data</span></div>
+      </div>
+      <div class="phase-right">
+        <div class="outcome-label">Cost</div>
+        <div class="outcome-big">$0</div>
+        <div class="outcome-text bold">Stable storage</div>
+      </div>
+    </div>
+
+    <!-- PHASE 3: DASHBOARD -->
+    <div class="phase">
+      <div class="phase-left">
+        <div class="phase-num">3</div>
+        <div class="phase-name">Live dashboard</div>
+        <div class="phase-goal-label">Goal</div>
+        <div class="phase-goal-text">See Paris at a glance.</div>
+        <div class="status-pill status-live"><span class="pulse"></span>LIVE</div>
+      </div>
+      <div class="phase-mid">
+        <div class="task">Backend API<span class="small">FastAPI</span></div>
+        <div class="arrow">→</div>
+        <div class="task">Website<span class="small">Next.js</span></div>
+        <div class="arrow">→</div>
+        <div class="task">Map<span class="small">color-coded</span></div>
+      </div>
+      <div class="phase-right">
+        <div class="outcome-label">Response</div>
+        <div class="outcome-big">&lt; 1s</div>
+        <div class="outcome-text">on all 1,512 stations</div>
+      </div>
+    </div>
+
+    <!-- PHASE 4: WIZARD -->
+    <div class="phase">
+      <div class="phase-left">
+        <div class="phase-num">4</div>
+        <div class="phase-name">The Wizard ✨</div>
+        <div class="phase-goal-label">Goal</div>
+        <div class="phase-goal-text">Predict bike availability hours ahead.</div>
+        <div class="status-pill status-wip"><span class="pulse"></span>IN PROGRESS</div>
+      </div>
+      <div class="phase-mid">
+        <div class="task wip">1-week warm-up<span class="small">first training set</span></div>
+        <div class="arrow">→</div>
+        <div class="task wip">Continuous training<span class="small">it keeps learning</span></div>
+        <div class="arrow">→</div>
+        <div class="task wip">Forecast<span class="small">per station</span></div>
+      </div>
+      <div class="phase-right wip">
+        <div class="outcome-label">Coming soon</div>
+        <div class="outcome-headline">Predictions up to 10 hours</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SUMMARY CALLOUT -->
+  <div class="summary">
+    <div class="summary-label">In short</div>
+    <div class="summary-text">
+      I listen to Paris every 5 minutes. I keep weeks of history for <span class="hilite">$0</span>.
+      And soon I'll tell you — <span class="hilite">up to 10 hours ahead</span> — whether your favorite station will still have a bike for you.
+    </div>
+  </div>
+
+  <!-- STATUS STRIP -->
+  <div class="strip">
+    <div class="stat">
+      <div class="l">Collecting for</div>
+      <div class="v">3 days</div>
+    </div>
+    <div class="stat">
+      <div class="l">Live stations</div>
+      <div class="v">1,512</div>
+    </div>
+    <div class="stat">
+      <div class="l">Readings saved</div>
+      <div class="v">~760,000</div>
+    </div>
+    <div class="stat">
+      <div class="l">Forecast in</div>
+      <div class="v wip">~4 days</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="stack">
+      <b>Tools:</b> Vélib API · cron-job.org · Render · Supabase · Next.js
+    </div>
+    <div class="badge">$0 / month</div>
+  </div>
+
+</div>
+</body>
+</html>
