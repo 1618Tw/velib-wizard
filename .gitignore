@@ -23,9 +23,14 @@ dist/
 # Data / models / artifacts
 api/models/*.lgb
 api/models/*.pkl
+api/data/models/*.lgb
+api/data/models/*.pkl
 data/
 *.sqlite
 *.db
 
 # OS
 Thumbs.db
+
+# Worktrees
+.worktrees/
