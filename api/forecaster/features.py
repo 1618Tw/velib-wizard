@@ -103,25 +103,54 @@ ORDER BY ss.station_id, ss.ts
 def _load_raw(session: "Session", start: datetime, end: datetime) -> pd.DataFrame:
     """Pull raw snapshots joined with station metadata in ``[start, end)``.
 
-    Bumps statement_timeout for this query alone. Supabase's pooler enforces
-    a short default (~1-2 min) that is fine for API reads but kills the
-    multi-million-row training pull.
+    Streams via a server-side cursor and downcasts each chunk before
+    appending. The naive ``.mappings().all()`` path peaked at ~1.5 GB for a
+    2-day window because SQLAlchemy materialises every row as a Python
+    dict before pandas sees it — that's an order of magnitude more than
+    Render's 512 MB free-tier ceiling. Chunked reads keep peak memory
+    bounded to roughly one chunk's worth of dicts at a time.
     """
-    session.execute(text("SET LOCAL statement_timeout = '600000'"))  # 10 min
-    rows = session.execute(
-        text(_RAW_SQL), {"start": start, "end": end}
-    ).mappings().all()
-    if not rows:
+    # Use a separate connection so the streaming cursor option doesn't
+    # bleed into the caller's session (subsequent INSERTs would fail
+    # because server-side cursors can't execute DML).
+    from db.session import engine as _engine
+
+    chunks: list[pd.DataFrame] = []
+    # Streaming cursors can only execute SELECT, so the timeout bump
+    # has to happen on a separate short-lived connection before we open
+    # the cursor.
+    with _engine.connect() as bump:
+        bump.execute(text("SET statement_timeout = '600000'"))  # 10 min
+        bump.commit()
+    with _engine.connect().execution_options(
+        stream_results=True, max_row_buffer=50_000
+    ) as conn:
+        for chunk in pd.read_sql_query(
+            text(_RAW_SQL),
+            conn,
+            params={"start": start, "end": end},
+            chunksize=50_000,
+            parse_dates={"ts": {"utc": True}},
+        ):
+            chunk["bikes"] = chunk["bikes"].astype("int16")
+            chunk["docks"] = chunk["docks"].astype("int16")
+            chunk["capacity"] = chunk["capacity"].astype("int16")
+            chunk["lat"] = chunk["lat"].astype("float32")
+            chunk["lon"] = chunk["lon"].astype("float32")
+            chunk["bikes_pct"] = (
+                chunk["bikes"].astype("float32")
+                / chunk["capacity"].where(chunk["capacity"] > 0).astype("float32")
+            ).astype("float32")
+            chunks.append(chunk)
+
+    if not chunks:
         return pd.DataFrame(
-            columns=["station_id", "ts", "bikes", "docks", "capacity", "lat", "lon"]
+            columns=[
+                "station_id", "ts", "bikes", "docks",
+                "capacity", "lat", "lon", "bikes_pct",
+            ]
         )
-    df = pd.DataFrame(rows)
-    df["ts"] = pd.to_datetime(df["ts"], utc=True)
-    df["bikes"] = df["bikes"].astype("int32")
-    df["docks"] = df["docks"].astype("int32")
-    df["capacity"] = df["capacity"].astype("int32")
-    df["bikes_pct"] = df["bikes"] / df["capacity"].where(df["capacity"] > 0)
-    return df
+    return pd.concat(chunks, ignore_index=True, copy=False)
 
 
 # ---------------------------------------------------------------------------

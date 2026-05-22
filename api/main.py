@@ -401,8 +401,13 @@ def _train_horizons_background(horizons: list[int]) -> None:
     """Train each horizon in sequence with a fresh session per booster.
 
     Runs after the HTTP response is flushed. Each booster gets its own
-    transaction so a single horizon failing doesn't cascade.
+    transaction so a single horizon failing doesn't cascade. We force a
+    full ``gc.collect()`` between horizons because Render's 512 MB free
+    tier is a hair away from OOM with the training frame; without the
+    explicit GC the previous run's pandas objects may still be reachable
+    from cyclic refs when the next one starts loading.
     """
+    import gc
     from db.session import SessionLocal
 
     for h in horizons:
@@ -413,6 +418,8 @@ def _train_horizons_background(horizons: list[int]) -> None:
             logging.info("background train succeeded for horizon=%dm", h)
         except Exception:
             logging.exception("background train failed for horizon=%dm", h)
+        finally:
+            gc.collect()
 
 
 @app.post("/api/cron/train-forecast", dependencies=[Depends(require_cron_secret)])

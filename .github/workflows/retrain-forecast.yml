@@ -1,0 +1,97 @@
+name: Retrain forecaster
+
+# Nightly retrain on the latest production data. We do this in CI rather
+# than on Render because the training frame peaks at >1 GB and Render's
+# free tier is 512 MB. GitHub-hosted runners give us 7 GB of RAM for free.
+#
+# The four .lgb booster files are committed back to the repo; Render's
+# auto-deploy then picks them up so /api/cron/refresh-forecasts can serve
+# fresh predictions every 15 minutes.
+
+on:
+  # Daily at 02:30 UTC (after Paris midnight, well past evening peak).
+  schedule:
+    - cron: "30 2 * * *"
+  # Manual trigger from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: write  # needed to commit + push booster files
+
+concurrency:
+  # If a manual trigger overlaps the scheduled run, drop the older one.
+  group: retrain-forecast
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Train all horizons
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Quiet config defaults — we never touch the live cron pipeline.
+          VELIB_RUN_SCHEDULER: "0"
+          CRON_SECRET: "ci-not-used"
+          ALLOWED_ORIGINS: "http://localhost:3000"
+          GBFS_BASE: "https://velib-metropole-opendata.smovengo.cloud/opendata/Velib_Metropole"
+        run: |
+          mkdir -p data/models
+          python -m forecaster.train --all
+
+      - name: Show metrics
+        run: |
+          ls -lh data/models/
+          echo "Last model_runs row (sanity check):"
+          python - <<'PY'
+          from db.session import SessionLocal
+          from sqlalchemy import text
+          with SessionLocal() as s:
+              for row in s.execute(text(
+                  "SELECT model_version, metrics->'horizon_minutes' AS h, "
+                  "metrics->'mae_test' AS mae, metrics->'win_pct' AS win "
+                  "FROM model_runs ORDER BY trained_at DESC LIMIT 4"
+              )).mappings():
+                  print(dict(row))
+          PY
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CRON_SECRET: "ci-not-used"
+          ALLOWED_ORIGINS: "http://localhost:3000"
+          GBFS_BASE: "https://velib-metropole-opendata.smovengo.cloud/opendata/Velib_Metropole"
+
+      - name: Commit boosters
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api/data/models/*.lgb
+          if git diff --staged --quiet; then
+            echo "no booster changes — skipping commit"
+          else
+            git commit -m "chore(model): retrained $(date -u +%Y-%m-%dT%H:%MZ)
+
+          Automated nightly retrain on the latest production data
+          via .github/workflows/retrain-forecast.yml"
+            git push
+          fi

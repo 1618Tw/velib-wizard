@@ -69,7 +69,7 @@ class Split:
 
 def auto_split(
     session: "Session",
-    train_days: int = 3,
+    train_days: int = 2,
     val_days: int = 1,
     test_days: int = 1,
 ) -> Split:
@@ -281,16 +281,37 @@ def train(
 # ---------------------------------------------------------------------------
 
 
+DEFAULT_HORIZONS = (30, 60, 90, 120)
+
+
 def _main() -> int:
     parser = argparse.ArgumentParser(description="Train the Vélib Wizard forecaster")
-    parser.add_argument("--horizon", type=int, default=120, help="minutes ahead (default 120)")
+    parser.add_argument(
+        "--horizon",
+        type=int,
+        default=120,
+        help="minutes ahead (default 120). Ignored when --all is set.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help=f"Train all default horizons: {DEFAULT_HORIZONS}",
+    )
     args = parser.parse_args()
+
+    import gc
 
     from db.session import SessionLocal
 
-    with SessionLocal() as session:
-        result = train(session, horizon_minutes=args.horizon)
-    print(json.dumps(result, indent=2, default=str))
+    horizons: tuple[int, ...] = DEFAULT_HORIZONS if args.all else (args.horizon,)
+    results: dict[int, dict] = {}
+    for h in horizons:
+        print(f"\n=== training horizon={h}m ===", file=sys.stderr, flush=True)
+        with SessionLocal() as session:
+            results[h] = train(session, horizon_minutes=h)
+        gc.collect()
+
+    print(json.dumps(results, indent=2, default=str))
     return 0
 
 

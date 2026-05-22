@@ -20,14 +20,18 @@ dist/
 .idea/
 .DS_Store
 
-# Data / models / artifacts
+# Data / artifacts
 api/models/*.lgb
 api/models/*.pkl
-api/data/models/*.lgb
 api/data/models/*.pkl
-data/
+api/data/raw/
+api/data/extracts/
+data/raw/
+data/extracts/
 *.sqlite
 *.db
+# Trained boosters under api/data/models/*.lgb are NOT gitignored — the
+# nightly GitHub Action commits them so Render picks them up on deploy.
 
 # OS
 Thumbs.db
