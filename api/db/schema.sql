@@ -71,3 +71,13 @@ CREATE TABLE IF NOT EXISTS model_runs (
     metrics         JSONB NOT NULL,
     notes           TEXT
 );
+
+-- Lock down PostgREST exposure. The backend connects as the `postgres` role
+-- (BYPASSRLS by default), so enabling RLS with no policies blocks anon/
+-- authenticated REST access while leaving server-side queries unaffected.
+ALTER TABLE stations         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE status_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE status_hourly    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE weather_hourly   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE forecasts        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE model_runs       ENABLE ROW LEVEL SECURITY;
