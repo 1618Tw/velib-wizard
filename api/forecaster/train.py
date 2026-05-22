@@ -23,9 +23,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMRegressor, early_stopping, log_evaluation
 from sqlalchemy import text
 
 from forecaster.baseline import predict_baseline_batch, train_baseline
@@ -182,37 +182,41 @@ def train(
     )
     y_test_baseline = predict_baseline_batch(baseline_table, test_with_ts)
 
-    # ---- Fit LightGBM ----------------------------------------------------
-    model = LGBMRegressor(
-        n_estimators=500,
-        learning_rate=0.05,
-        num_leaves=64,
-        min_child_samples=50,
-        feature_fraction=0.9,
-        objective="regression_l1",
-        metric="mae",
-        random_state=42,
-        verbose=-1,
+    # ---- Fit LightGBM (native API; no sklearn dep) -----------------------
+    train_data = lgb.Dataset(
+        X_train, label=y_train, categorical_feature=CATEGORICAL_FEATURES
     )
+    val_data = lgb.Dataset(
+        X_val, label=y_val, categorical_feature=CATEGORICAL_FEATURES, reference=train_data
+    )
+    params = {
+        "objective": "regression_l1",
+        "metric": "mae",
+        "learning_rate": 0.05,
+        "num_leaves": 64,
+        "min_data_in_leaf": 50,
+        "feature_fraction": 0.9,
+        "verbose": -1,
+        "seed": 42,
+    }
     fit_started = time.monotonic()
-    model.fit(
-        X_train,
-        y_train,
-        eval_set=[(X_val, y_val)],
-        eval_metric="mae",
-        categorical_feature=CATEGORICAL_FEATURES,
-        callbacks=[early_stopping(50), log_evaluation(50)],
+    booster = lgb.train(
+        params,
+        train_data,
+        num_boost_round=500,
+        valid_sets=[train_data, val_data],
+        valid_names=["train", "val"],
+        callbacks=[lgb.early_stopping(50), lgb.log_evaluation(50)],
     )
     fit_seconds = time.monotonic() - fit_started
     print(
-        f"[train] fit done in {fit_seconds:.1f}s — best iter "
-        f"{model.best_iteration_}",
+        f"[train] fit done in {fit_seconds:.1f}s — best iter {booster.best_iteration}",
         file=sys.stderr,
     )
 
     # ---- Test metrics ----------------------------------------------------
-    y_pred_test = pd.Series(model.predict(X_test), index=X_test.index)
-    mae_val  = _mae(y_val,  pd.Series(model.predict(X_val), index=X_val.index))
+    y_pred_test = pd.Series(booster.predict(X_test), index=X_test.index)
+    mae_val  = _mae(y_val,  pd.Series(booster.predict(X_val), index=X_val.index))
     mae_test = _mae(y_test, y_pred_test)
     mae_baseline = _mae(y_test, y_test_baseline)
     win_pct = _win_pct(y_test, y_pred_test, y_test_baseline)
@@ -227,7 +231,7 @@ def train(
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     model_version = f"v1_{datetime.now(tz=timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     model_path = MODEL_DIR / f"forecast_{cfg.horizon_minutes}m.lgb"
-    model.booster_.save_model(str(model_path))
+    booster.save_model(str(model_path))
     print(f"[train] saved {model_path}", file=sys.stderr)
 
     # ---- Log to model_runs ----------------------------------------------
@@ -237,7 +241,7 @@ def train(
         "mae_test": mae_test,
         "baseline_mae_test": mae_baseline,
         "win_pct": win_pct,
-        "best_iteration": int(model.best_iteration_ or 0),
+        "best_iteration": int(booster.best_iteration or 0),
         "fit_seconds": round(fit_seconds, 2),
         "n_train": int(len(X_train)),
         "n_val": int(len(X_val)),
