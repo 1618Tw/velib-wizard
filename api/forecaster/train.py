@@ -134,6 +134,8 @@ def train(
     horizon_minutes: int = 120,
     config: FeatureConfig | None = None,
     split: Split | None = None,
+    num_boost_round: int = 1500,
+    early_stopping_rounds: int = 75,
 ) -> dict:
     """Fit LightGBM, evaluate, persist. Returns the metrics dict.
 
@@ -203,10 +205,13 @@ def train(
     booster = lgb.train(
         params,
         train_data,
-        num_boost_round=500,
+        num_boost_round=num_boost_round,
         valid_sets=[train_data, val_data],
         valid_names=["train", "val"],
-        callbacks=[lgb.early_stopping(50), lgb.log_evaluation(50)],
+        callbacks=[
+            lgb.early_stopping(early_stopping_rounds),
+            lgb.log_evaluation(100),
+        ],
     )
     fit_seconds = time.monotonic() - fit_started
     print(

@@ -101,7 +101,13 @@ ORDER BY ss.station_id, ss.ts
 
 
 def _load_raw(session: "Session", start: datetime, end: datetime) -> pd.DataFrame:
-    """Pull raw snapshots joined with station metadata in ``[start, end)``."""
+    """Pull raw snapshots joined with station metadata in ``[start, end)``.
+
+    Bumps statement_timeout for this query alone. Supabase's pooler enforces
+    a short default (~1-2 min) that is fine for API reads but kills the
+    multi-million-row training pull.
+    """
+    session.execute(text("SET LOCAL statement_timeout = '600000'"))  # 10 min
     rows = session.execute(
         text(_RAW_SQL), {"start": start, "end": end}
     ).mappings().all()
