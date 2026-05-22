@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -394,32 +394,72 @@ def cron_retention(session: Session = Depends(get_session)) -> dict:
 # ---------------------------------------------------------------------------
 
 
+DEFAULT_HORIZONS = [30, 60, 90, 120]
+
+
+def _train_horizons_background(horizons: list[int]) -> None:
+    """Train each horizon in sequence with a fresh session per booster.
+
+    Runs after the HTTP response is flushed. Each booster gets its own
+    transaction so a single horizon failing doesn't cascade.
+    """
+    from db.session import SessionLocal
+
+    for h in horizons:
+        try:
+            with SessionLocal() as session:
+                forecaster_train.train(session, horizon_minutes=h)
+            forecaster_predict.reset_booster_cache(h)
+            logging.info("background train succeeded for horizon=%dm", h)
+        except Exception:
+            logging.exception("background train failed for horizon=%dm", h)
+
+
 @app.post("/api/cron/train-forecast", dependencies=[Depends(require_cron_secret)])
 def cron_train_forecast(
-    horizon: int = 120, session: Session = Depends(get_session)
+    background_tasks: BackgroundTasks,
+    horizon: int | None = None,
 ) -> dict:
-    """Retrain the LightGBM forecaster end-to-end. ~1-2 min on prod data.
+    """Schedule training and return immediately.
 
-    Blocking by design — cron-job.org tolerates long responses and we want
-    the failure signal in the response status, not buried in a log file.
-    The booster cache is reset on success so the next ``refresh-forecasts``
-    call picks up the new weights.
+    Training a single LightGBM model on prod data takes ~2-3 min; four
+    horizons together would exceed the Render HTTP timeout. We hand the
+    work off to a background task so cron-job.org sees a fast 202 and
+    flags only real scheduling failures, not the long-running fit itself.
+
+    Pass ``?horizon=120`` to train a single horizon (handy for debugging);
+    omit it to train the full set ``DEFAULT_HORIZONS``.
     """
-    result = forecaster_train.train(session, horizon_minutes=horizon)
-    forecaster_predict.reset_booster_cache(horizon)
-    return result
+    horizons = [horizon] if horizon else list(DEFAULT_HORIZONS)
+    background_tasks.add_task(_train_horizons_background, horizons)
+    return {"status": "scheduled", "horizons": horizons}
 
 
 @app.post("/api/cron/refresh-forecasts", dependencies=[Depends(require_cron_secret)])
 def cron_refresh_forecasts(
-    horizon: int = 120, session: Session = Depends(get_session)
+    horizon: int | None = None,
+    session: Session = Depends(get_session),
 ) -> dict:
-    """Batch-predict every station and upsert into ``forecasts``.
+    """Batch-predict every station for each horizon (default: all four).
 
-    Cheap (few seconds for ~1.5k stations on cached booster). Designed to
-    run every 15 minutes so the map's risk colors stay current.
+    Each horizon takes a few seconds on a cached booster, so the whole
+    sweep fits comfortably under the Render HTTP timeout. A per-horizon
+    failure is captured in the response instead of bubbling up — one bad
+    booster shouldn't keep the others from refreshing.
     """
-    return forecaster_predict.refresh_forecasts(session, horizon_minutes=horizon)
+    horizons = [horizon] if horizon else list(DEFAULT_HORIZONS)
+    results: dict[int, dict] = {}
+    for h in horizons:
+        try:
+            results[h] = forecaster_predict.refresh_forecasts(
+                session, horizon_minutes=h
+            )
+        except FileNotFoundError as e:
+            results[h] = {"error": "no_booster", "detail": str(e)}
+        except Exception as e:
+            logging.exception("refresh failed for horizon=%dm", h)
+            results[h] = {"error": "exception", "detail": str(e)}
+    return {"horizons": horizons, "results": results}
 
 
 @app.get("/api/stations/{station_id}/forecast")
@@ -456,6 +496,7 @@ def forecasts_risk(
                 f.station_id,
                 f.risk_bike,
                 f.risk_dock,
+                f.predicted_pct,
                 f.model_version,
                 f.computed_at,
                 s.name,
@@ -482,6 +523,11 @@ def forecasts_risk(
                 "capacity": r["capacity"],
                 "risk_bike": float(r["risk_bike"]),
                 "risk_dock": float(r["risk_dock"]),
+                "predicted_pct": (
+                    float(r["predicted_pct"])
+                    if r["predicted_pct"] is not None
+                    else None
+                ),
                 "model_version": r["model_version"],
                 "computed_at": r["computed_at"].isoformat(),
             }

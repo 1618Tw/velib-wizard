@@ -2,11 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 import maplibregl, { Map as MLMap, MapMouseEvent } from "maplibre-gl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
 
 import { api, type Station } from "@/lib/api";
+
+const HORIZON_OPTIONS = [30, 60, 90, 120] as const;
+const DEFAULT_HORIZON = 120;
+
+function horizonLabel(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h} h` : `${h} h ${m}`;
+}
 
 const PARIS_CENTER: [number, number] = [2.3522, 48.8566];
 
@@ -37,13 +47,23 @@ function fillRatio(bikes: number | null, docks: number | null): number | null {
   return bikes / total;
 }
 
-/** Bipolar palette: green when balanced (~50%), red at extremes (full or empty). */
+/** Bipolar palette: green when balanced (~50%), red at extremes (full or empty).
+ *  Used in the side panel — gives a "comfort score" for the current state. */
 function colorForFill(fill: number | null): string {
   if (fill === null) return "#94a3b8";
   const dist = Math.abs(fill - 0.5);
   if (dist < 0.2) return "#16a34a"; // 30%–70%
   if (dist < 0.4) return "#f59e0b"; // 10%–30% or 70%–90%
   return "#dc2626"; // extremes
+}
+
+/** Sequential green → yellow → red ramp, smooth via HSL.
+ *  Used to color station markers by the model's predicted fullness. */
+function colorForPct(pct: number | null): string {
+  if (pct === null || Number.isNaN(pct)) return "#cbd5e1";
+  const clamped = Math.max(0, Math.min(1, pct));
+  const hue = 120 * (1 - clamped); // 120 green, 60 yellow, 0 red
+  return `hsl(${hue.toFixed(0)}, 70%, 45%)`;
 }
 
 function formatPct(fill: number | null): string {
@@ -55,12 +75,26 @@ export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [selected, setSelected] = useState<Station | null>(null);
+  const [horizon, setHorizon] = useState<number>(DEFAULT_HORIZON);
 
   const { data: stations = [] } = useQuery({
     queryKey: ["stations"],
     queryFn: api.stations,
     refetchInterval: 60_000,
   });
+
+  const { data: forecast } = useQuery({
+    queryKey: ["forecasts", horizon],
+    queryFn: () => api.forecastsRisk(horizon),
+    refetchInterval: 5 * 60_000,
+    staleTime: 60_000,
+  });
+
+  const predictedByStation = useMemo(() => {
+    const map = new Map<string, number | null>();
+    forecast?.stations.forEach((s) => map.set(s.station_id, s.predicted_pct));
+    return map;
+  }, [forecast]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -95,14 +129,17 @@ export default function MapView() {
 
     const fc = {
       type: "FeatureCollection" as const,
-      features: stations.map((s) => ({
-        type: "Feature" as const,
-        geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] },
-        properties: {
-          station_id: s.station_id,
-          color: colorForFill(fillRatio(s.bikes, s.docks)),
-        },
-      })),
+      features: stations.map((s) => {
+        const predicted = predictedByStation.get(s.station_id) ?? null;
+        return {
+          type: "Feature" as const,
+          geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] },
+          properties: {
+            station_id: s.station_id,
+            color: colorForPct(predicted),
+          },
+        };
+      }),
     };
 
     const apply = () => {
@@ -143,7 +180,7 @@ export default function MapView() {
 
     if (map.isStyleLoaded()) apply();
     else map.once("load", apply);
-  }, [stations]);
+  }, [stations, predictedByStation]);
 
   return (
     <div
@@ -158,7 +195,81 @@ export default function MapView() {
         {stations.length.toLocaleString()} stations
       </div>
 
+      <HorizonSlider
+        value={horizon}
+        onChange={setHorizon}
+        hasData={!!forecast}
+        computedAt={forecast?.stations[0]?.computed_at ?? null}
+      />
+
       {selected && <StationPanel station={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
+
+function HorizonSlider({
+  value,
+  onChange,
+  hasData,
+  computedAt,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  hasData: boolean;
+  computedAt: string | null;
+}) {
+  const min = HORIZON_OPTIONS[0];
+  const max = HORIZON_OPTIONS[HORIZON_OPTIONS.length - 1];
+  const step = HORIZON_OPTIONS[1] - HORIZON_OPTIONS[0]; // 30
+  const ageMin = computedAt
+    ? Math.round((Date.now() - new Date(computedAt).getTime()) / 60000)
+    : null;
+
+  return (
+    <div className="absolute bottom-4 right-4 z-10 bg-white/95 backdrop-blur rounded-xl shadow-lg border border-[var(--color-brand-border)] px-4 pt-3 pb-2 w-72 text-[var(--color-brand-dark)]">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-[10px] uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">
+          Forecast horizon
+        </span>
+        <span className="text-sm font-semibold tabular-nums">
+          {horizonLabel(value)}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        list="horizon-ticks"
+        className="w-full accent-[var(--color-brand)] cursor-pointer"
+        aria-label="Forecast horizon"
+      />
+      <datalist id="horizon-ticks">
+        {HORIZON_OPTIONS.map((h) => (
+          <option key={h} value={h} label={horizonLabel(h)} />
+        ))}
+      </datalist>
+      <div className="flex justify-between text-[10px] text-[var(--color-brand-dark)]/60 tabular-nums mt-0.5 px-0.5">
+        {HORIZON_OPTIONS.map((h) => (
+          <span
+            key={h}
+            className={
+              h === value
+                ? "font-semibold text-[var(--color-brand-dark)]"
+                : ""
+            }
+          >
+            {horizonLabel(h)}
+          </span>
+        ))}
+      </div>
+      <div className="text-[10px] text-[var(--color-brand-dark)]/50 mt-2 leading-tight">
+        {hasData
+          ? `Predicted fullness · refreshed ${ageMin}m ago`
+          : "Loading forecasts…"}
+      </div>
     </div>
   );
 }
@@ -166,18 +277,19 @@ export default function MapView() {
 function Legend() {
   return (
     <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-sm border border-[var(--color-brand-border)] px-3 py-2 text-xs flex flex-col gap-1.5 text-[var(--color-brand-dark)]">
-      <div className="font-semibold">Station fullness</div>
-      <div className="flex items-center gap-2">
-        <Dot color="#dc2626" />
-        <span className="text-[var(--color-brand-dark)]/70">Empty or full</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <Dot color="#f59e0b" />
-        <span className="text-[var(--color-brand-dark)]/70">Near a limit</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <Dot color="#16a34a" />
-        <span className="text-[var(--color-brand-dark)]/70">Balanced</span>
+      <div className="font-semibold">Predicted fullness</div>
+      <div
+        className="h-2 w-44 rounded-full"
+        style={{
+          background:
+            "linear-gradient(to right, hsl(120,70%,45%) 0%, hsl(60,70%,45%) 50%, hsl(0,70%,45%) 100%)",
+        }}
+        aria-hidden
+      />
+      <div className="flex justify-between text-[10px] text-[var(--color-brand-dark)]/60 tabular-nums w-44">
+        <span>empty</span>
+        <span>half</span>
+        <span>full</span>
       </div>
     </div>
   );

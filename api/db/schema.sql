@@ -56,10 +56,14 @@ CREATE TABLE IF NOT EXISTS forecasts (
     horizon_minutes     INTEGER NOT NULL,
     risk_bike           REAL NOT NULL,
     risk_dock           REAL NOT NULL,
+    predicted_pct       REAL,
     model_version       TEXT NOT NULL,
     computed_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (station_id, horizon_minutes, model_version)
 );
+
+-- For existing deployments, add the column if it's not there yet.
+ALTER TABLE forecasts ADD COLUMN IF NOT EXISTS predicted_pct REAL;
 
 CREATE INDEX IF NOT EXISTS idx_forecasts_computed ON forecasts(computed_at DESC);
 

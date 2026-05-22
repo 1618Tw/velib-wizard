@@ -117,14 +117,16 @@ def _align_station_categories(
 
 _UPSERT_SQL = """
 INSERT INTO forecasts (
-    station_id, horizon_minutes, risk_bike, risk_dock, model_version
+    station_id, horizon_minutes, risk_bike, risk_dock,
+    predicted_pct, model_version
 )
-VALUES (:sid, :h, :rb, :rd, :v)
+VALUES (:sid, :h, :rb, :rd, :pp, :v)
 ON CONFLICT (station_id, horizon_minutes, model_version)
 DO UPDATE SET
-    risk_bike   = EXCLUDED.risk_bike,
-    risk_dock   = EXCLUDED.risk_dock,
-    computed_at = now()
+    risk_bike     = EXCLUDED.risk_bike,
+    risk_dock     = EXCLUDED.risk_dock,
+    predicted_pct = EXCLUDED.predicted_pct,
+    computed_at   = now()
 """
 
 
@@ -176,10 +178,15 @@ def refresh_forecasts(
             "h": horizon_minutes,
             "rb": float(rb),
             "rd": float(rd),
+            "pp": float(pp),
             "v": model_version,
         }
-        for sid, rb, rd in zip(
-            frame["station_id"].astype(str), risk_bike, risk_dock, strict=True
+        for sid, rb, rd, pp in zip(
+            frame["station_id"].astype(str),
+            risk_bike,
+            risk_dock,
+            predictions,
+            strict=True,
         )
     ]
     session.execute(text(_UPSERT_SQL), payload)
@@ -204,7 +211,7 @@ def predict_one(
     row = session.execute(
         text(
             """
-            SELECT risk_bike, risk_dock, model_version, computed_at
+            SELECT risk_bike, risk_dock, predicted_pct, model_version, computed_at
             FROM forecasts
             WHERE station_id = :sid AND horizon_minutes = :h
             ORDER BY computed_at DESC
@@ -220,6 +227,9 @@ def predict_one(
         "horizon_minutes": horizon_minutes,
         "risk_bike": float(row["risk_bike"]),
         "risk_dock": float(row["risk_dock"]),
+        "predicted_pct": (
+            float(row["predicted_pct"]) if row["predicted_pct"] is not None else None
+        ),
         "model_version": row["model_version"],
         "computed_at": row["computed_at"].isoformat(),
     }

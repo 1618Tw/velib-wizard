@@ -29,6 +29,25 @@ export type NetworkSummary = {
   last_ts: string | null;
 };
 
+export type ForecastStation = {
+  station_id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  capacity: number;
+  risk_bike: number;
+  risk_dock: number;
+  predicted_pct: number | null;
+  model_version: string;
+  computed_at: string;
+};
+
+export type ForecastsRisk = {
+  horizon_minutes: number;
+  n_stations: number;
+  stations: ForecastStation[];
+};
+
 export type StatusOverview = {
   ok: boolean;
   checked_at: string;
@@ -80,4 +99,6 @@ export const api = {
     getJSON<HistoryPoint[]>(`/api/stations/${id}/history?hours=${hours}`),
   networkSummary: () => getJSON<NetworkSummary>("/api/network/summary"),
   status: () => getJSONLenient<StatusOverview>("/api/status"),
+  forecastsRisk: (horizon: number) =>
+    getJSON<ForecastsRisk>(`/api/forecasts/risk?horizon=${horizon}`),
 };
