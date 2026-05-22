@@ -7,3 +7,8 @@ pydantic==2.10.2
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
 apscheduler==3.10.4
+
+# Forecaster (added 2026-05-19, implementation pending — see memory: project-wizard-ml-plan)
+lightgbm==4.5.0
+pandas==2.2.3
+pyarrow==18.1.0
