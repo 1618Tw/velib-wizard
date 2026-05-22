@@ -43,5 +43,7 @@ def build_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone="Europe/Paris")
     scheduler.add_job(_run_status, "interval", minutes=5, id="status", max_instances=1)
     scheduler.add_job(_run_info, "cron", hour=4, minute=0, id="info_daily")
-    scheduler.add_job(_run_retention, "cron", hour=3, minute=0, id="retention_daily")
+    # Every 6h so a single skipped run can't lose a whole day's worth of
+    # rollups (matches the prod cron-job.org cadence).
+    scheduler.add_job(_run_retention, "interval", hours=6, id="retention_6h", max_instances=1)
     return scheduler

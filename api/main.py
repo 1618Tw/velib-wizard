@@ -28,6 +28,11 @@ PROCESS_STARTED_AT = datetime.now(tz=timezone.utc)
 _LAST_ALERT_AT: datetime | None = None
 _LAST_ALERT_KIND: str | None = None
 STALE_MINUTES = 15
+# Hourly rollups lag the live data by `RAW_KEEP_DAYS` by design (5d). We
+# allow an extra cushion before screaming so a single skipped cron run
+# doesn't trigger noise.
+RETENTION_LAG_BUDGET_HOURS = 12
+RAW_KEEP_DAYS = 5
 
 
 @asynccontextmanager
@@ -65,6 +70,27 @@ def require_cron_secret(x_cron_secret: str | None = Header(default=None)) -> Non
         raise HTTPException(status_code=401, detail="bad cron secret")
 
 
+def _retention_stale(
+    now: datetime,
+    oldest_snapshot: datetime | None,
+    last_hourly: datetime | None,
+) -> bool:
+    """True when the downsample/prune job has fallen behind its budget.
+
+    Two cases:
+    1. ``status_hourly`` empty AND raw history already extends past
+       RAW_KEEP_DAYS — retention should have produced rows by now.
+    2. ``status_hourly`` populated but its newest hour lags the live
+       data by more than RAW_KEEP_DAYS + the cushion.
+    """
+    grace = timedelta(days=RAW_KEEP_DAYS, hours=RETENTION_LAG_BUDGET_HOURS)
+    if last_hourly is None:
+        if oldest_snapshot is None:
+            return False  # nothing collected at all — handled by stale check
+        return (now - oldest_snapshot) > grace
+    return (now - last_hourly) > grace
+
+
 def _maybe_send_alert(kind: str, subject: str, body: str) -> bool:
     """Emit an alert email, but at most once per cooldown window per kind."""
     global _LAST_ALERT_AT, _LAST_ALERT_KIND
@@ -88,11 +114,14 @@ def health(session: Session = Depends(get_session)) -> dict:
     stations = session.execute(text("SELECT count(*) FROM stations")).scalar_one()
     snapshots = session.execute(text("SELECT count(*) FROM status_snapshots")).scalar_one()
     last_snap = session.execute(text("SELECT max(ts) FROM status_snapshots")).scalar_one()
+    last_hourly = session.execute(text("SELECT max(hour_ts) FROM status_hourly")).scalar_one()
+    first_snap = session.execute(text("SELECT min(ts) FROM status_snapshots")).scalar_one()
 
     now = datetime.now(tz=timezone.utc)
     minutes_since_last = (
         (now - last_snap).total_seconds() / 60.0 if last_snap is not None else None
     )
+    retention_stale = _retention_stale(now, first_snap, last_hourly)
 
     # Side effect: trigger an alert email when the system is unhealthy. The
     # keep-warm cron hits this endpoint every 4 min, so this acts as our
@@ -110,6 +139,24 @@ def health(session: Session = Depends(get_session)) -> dict:
                     f"Check: https://console.cron-job.org and the Render logs."
                 ),
             )
+        if retention_stale:
+            lag = (
+                (now - last_hourly).total_seconds() / 3600.0
+                if last_hourly is not None
+                else None
+            )
+            _maybe_send_alert(
+                kind="retention_stale",
+                subject="Retention/downsample stalled",
+                body=(
+                    f"status_hourly.max(hour_ts) lags the live data by "
+                    f"{lag:.1f}h "
+                    f"(budget {RAW_KEEP_DAYS * 24 + RETENTION_LAG_BUDGET_HOURS}h).\n"
+                    f"last_hourly={last_hourly.isoformat() if last_hourly else 'never'}\n\n"
+                    f"Check cron-job.org has an active recurring job for "
+                    f"POST /api/cron/retention."
+                ),
+            )
 
     return {
         "ok": True,
@@ -119,6 +166,8 @@ def health(session: Session = Depends(get_session)) -> dict:
         "minutes_since_last_snapshot": (
             round(minutes_since_last, 1) if minutes_since_last is not None else None
         ),
+        "last_hourly_ts": last_hourly.isoformat() if last_hourly else None,
+        "retention_stale": retention_stale,
         "alerts_enabled": alerts_enabled(),
     }
 
@@ -146,14 +195,22 @@ def status_overview(response: Response, session: Session = Depends(get_session))
               (SELECT count(*) FROM status_snapshots WHERE ts >= now() - interval '24 hours') AS snapshots_24h,
               (SELECT max(ts) FROM status_snapshots) AS last_ts,
               (SELECT min(ts) FROM status_snapshots) AS first_ts,
+              (SELECT max(hour_ts) FROM status_hourly) AS last_hourly_ts,
               pg_database_size(current_database()) AS db_bytes
             """
         )
     ).mappings().one()
 
     last_ts = row["last_ts"]
+    last_hourly_ts = row["last_hourly_ts"]
     minutes_since_last = (
         (now - last_ts).total_seconds() / 60.0 if last_ts is not None else None
+    )
+    retention_stale = _retention_stale(now, row["first_ts"], last_hourly_ts)
+    hours_since_last_hourly = (
+        round((now - last_hourly_ts).total_seconds() / 3600.0, 1)
+        if last_hourly_ts is not None
+        else None
     )
 
     # Sparkline: snapshots per 15-min bucket for the last 6 hours.
@@ -173,11 +230,14 @@ def status_overview(response: Response, session: Session = Depends(get_session))
 
     gbfs_ok = _gbfs_reachable()
 
-    # Health verdict — fails fast if data is stale or GBFS is down.
+    # Health verdict — fails fast if data is stale, GBFS is down, or the
+    # downsample/prune job has fallen behind. We *include* retention here so
+    # the dashboard goes red instead of silently letting the DB balloon.
     healthy = (
         minutes_since_last is not None
         and minutes_since_last < 15
         and gbfs_ok
+        and not retention_stale
     )
     if not healthy:
         response.status_code = 503
@@ -199,6 +259,9 @@ def status_overview(response: Response, session: Session = Depends(get_session))
             "minutes_since_last_snapshot": (
                 round(minutes_since_last, 1) if minutes_since_last is not None else None
             ),
+            "last_hourly_ts": last_hourly_ts.isoformat() if last_hourly_ts else None,
+            "hours_since_last_hourly": hours_since_last_hourly,
+            "retention_stale": retention_stale,
             "database_bytes": int(row["db_bytes"]),
         },
         "sparkline": [
