@@ -13,6 +13,8 @@ from collectors.gbfs import collect_station_information, collect_station_status
 from collectors.retention import downsample_and_prune
 from config import settings
 from db.session import get_session
+from forecaster import predict as forecaster_predict
+from forecaster import train as forecaster_train
 from notifier import alerts_enabled, send_email_alert
 from scheduler import build_scheduler
 
@@ -322,3 +324,104 @@ def cron_collect_status(session: Session = Depends(get_session)) -> dict:
 @app.post("/api/cron/retention", dependencies=[Depends(require_cron_secret)])
 def cron_retention(session: Session = Depends(get_session)) -> dict:
     return downsample_and_prune(session)
+
+
+# ---------------------------------------------------------------------------
+# Forecaster cron + reads
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/cron/train-forecast", dependencies=[Depends(require_cron_secret)])
+def cron_train_forecast(
+    horizon: int = 120, session: Session = Depends(get_session)
+) -> dict:
+    """Retrain the LightGBM forecaster end-to-end. ~1-2 min on prod data.
+
+    Blocking by design — cron-job.org tolerates long responses and we want
+    the failure signal in the response status, not buried in a log file.
+    The booster cache is reset on success so the next ``refresh-forecasts``
+    call picks up the new weights.
+    """
+    result = forecaster_train.train(session, horizon_minutes=horizon)
+    forecaster_predict.reset_booster_cache(horizon)
+    return result
+
+
+@app.post("/api/cron/refresh-forecasts", dependencies=[Depends(require_cron_secret)])
+def cron_refresh_forecasts(
+    horizon: int = 120, session: Session = Depends(get_session)
+) -> dict:
+    """Batch-predict every station and upsert into ``forecasts``.
+
+    Cheap (few seconds for ~1.5k stations on cached booster). Designed to
+    run every 15 minutes so the map's risk colors stay current.
+    """
+    return forecaster_predict.refresh_forecasts(session, horizon_minutes=horizon)
+
+
+@app.get("/api/stations/{station_id}/forecast")
+def station_forecast(
+    station_id: str,
+    horizon: int = 120,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Latest stored forecast for one station. 404 if never computed."""
+    result = forecaster_predict.predict_one(session, station_id, horizon)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no forecast for station {station_id} at horizon {horizon}m",
+        )
+    return result
+
+
+@app.get("/api/forecasts/risk")
+def forecasts_risk(
+    horizon: int = 120,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Latest forecast for every station — feeds the map's risk coloring.
+
+    Returns one row per station with the most recent forecast at the given
+    horizon. Joined with station metadata so the frontend can render
+    without a second round-trip.
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT DISTINCT ON (f.station_id)
+                f.station_id,
+                f.risk_bike,
+                f.risk_dock,
+                f.model_version,
+                f.computed_at,
+                s.name,
+                s.lat,
+                s.lon,
+                s.capacity
+            FROM forecasts f
+            JOIN stations s ON s.station_id = f.station_id
+            WHERE f.horizon_minutes = :h
+            ORDER BY f.station_id, f.computed_at DESC
+            """
+        ),
+        {"h": horizon},
+    ).mappings().all()
+    return {
+        "horizon_minutes": horizon,
+        "n_stations": len(rows),
+        "stations": [
+            {
+                "station_id": r["station_id"],
+                "name": r["name"],
+                "lat": r["lat"],
+                "lon": r["lon"],
+                "capacity": r["capacity"],
+                "risk_bike": float(r["risk_bike"]),
+                "risk_dock": float(r["risk_dock"]),
+                "model_version": r["model_version"],
+                "computed_at": r["computed_at"].isoformat(),
+            }
+            for r in rows
+        ],
+    }
