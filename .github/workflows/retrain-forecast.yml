@@ -4,7 +4,7 @@ name: Retrain forecaster
 # than on Render because the training frame peaks at >1 GB and Render's
 # free tier is 512 MB. GitHub-hosted runners give us 7 GB of RAM for free.
 #
-# The four .lgb booster files are committed back to the repo; Render's
+# The six .lgb booster files are committed back to the repo; Render's
 # auto-deploy then picks them up so /api/cron/refresh-forecasts can serve
 # fresh predictions every 15 minutes.
 
@@ -70,7 +70,7 @@ jobs:
               for row in s.execute(text(
                   "SELECT model_version, metrics->'horizon_minutes' AS h, "
                   "metrics->'mae_test' AS mae, metrics->'win_pct' AS win "
-                  "FROM model_runs ORDER BY trained_at DESC LIMIT 4"
+                  "FROM model_runs ORDER BY trained_at DESC LIMIT 6"
               )).mappings():
                   print(dict(row))
           PY

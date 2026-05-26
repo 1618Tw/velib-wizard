@@ -15,7 +15,7 @@ import {
 
 import { api, type ModelRun } from "@/lib/api";
 
-const HORIZONS = [30, 60, 90, 120] as const;
+const HORIZONS = [15, 30, 45, 60, 90, 120] as const;
 type Horizon = (typeof HORIZONS)[number];
 
 type Tone = "green" | "amber" | "red" | "zinc";
@@ -52,7 +52,9 @@ function fmtDate(iso: string): string {
 
 function horizonLabel(min: Horizon): string {
   if (min < 60) return `${min}m`;
-  return `${min / 60}h${min % 60 ? ` ${min % 60}m` : ""}`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h${m}`;
 }
 
 export default function ModelDriftPanel() {
@@ -130,7 +132,7 @@ export default function ModelDriftPanel() {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {HORIZONS.map((h) => {
           const latest = latestByHorizon.get(h);
           const t = toneClasses(runTone(latest));

@@ -8,15 +8,15 @@ import { X } from "lucide-react";
 
 import { api, type Station } from "@/lib/api";
 
-const HORIZON_OPTIONS = [0, 30, 60, 90, 120] as const;
+const HORIZON_OPTIONS = [0, 15, 30, 45, 60, 90, 120] as const;
 const DEFAULT_HORIZON = 120;
 
 function horizonLabel(min: number): string {
   if (min === 0) return "Now";
-  if (min < 60) return `${min} min`;
+  if (min < 60) return `${min}m`;
   const h = Math.floor(min / 60);
   const m = min % 60;
-  return m === 0 ? `${h} h` : `${h} h ${m}`;
+  return m === 0 ? `${h}h` : `${h}h${m}`;
 }
 
 const PARIS_CENTER: [number, number] = [2.3522, 48.8566];
@@ -228,9 +228,9 @@ function HorizonSlider({
   hasData: boolean;
   computedAt: string | null;
 }) {
-  const min = HORIZON_OPTIONS[0];
-  const max = HORIZON_OPTIONS[HORIZON_OPTIONS.length - 1];
-  const step = HORIZON_OPTIONS[1] - HORIZON_OPTIONS[0]; // 30
+  // Slider operates on indices into HORIZON_OPTIONS so it only snaps to
+  // trained horizons — never to e.g. 75 or 105, which have no booster.
+  const valueIdx = Math.max(0, HORIZON_OPTIONS.indexOf(value as (typeof HORIZON_OPTIONS)[number]));
   const ageMin = computedAt
     ? Math.round((Date.now() - new Date(computedAt).getTime()) / 60000)
     : null;
@@ -247,20 +247,14 @@ function HorizonSlider({
       </div>
       <input
         type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        list="horizon-ticks"
+        min={0}
+        max={HORIZON_OPTIONS.length - 1}
+        step={1}
+        value={valueIdx}
+        onChange={(e) => onChange(HORIZON_OPTIONS[Number(e.target.value)])}
         className="w-full accent-[var(--color-brand)] cursor-pointer"
         aria-label="Forecast horizon"
       />
-      <datalist id="horizon-ticks">
-        {HORIZON_OPTIONS.map((h) => (
-          <option key={h} value={h} label={horizonLabel(h)} />
-        ))}
-      </datalist>
       <div className="flex justify-between text-[10px] text-[var(--color-brand-dark)]/60 tabular-nums mt-0.5 px-0.5">
         {HORIZON_OPTIONS.map((h) => (
           <span

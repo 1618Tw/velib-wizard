@@ -394,7 +394,7 @@ def cron_retention(session: Session = Depends(get_session)) -> dict:
 # ---------------------------------------------------------------------------
 
 
-DEFAULT_HORIZONS = [30, 60, 90, 120]
+DEFAULT_HORIZONS = [15, 30, 45, 60, 90, 120]
 
 
 def _train_horizons_background(horizons: list[int]) -> None:
