@@ -13,6 +13,7 @@ import {
 } from "recharts";
 
 import { api, type StatusOverview } from "@/lib/api";
+import ModelDriftPanel from "./ModelDriftPanel";
 
 const SUPABASE_FREE_BYTES = 500 * 1024 * 1024; // 500 MB
 
@@ -228,6 +229,8 @@ function StatusBody({
           Each bar should be ≈ {fmtNumber(d.stations * 3)} (one snapshot per station, three ticks per 15-min bucket).
         </p>
       </section>
+
+      <ModelDriftPanel />
 
       <section className="rounded-xl border border-[var(--color-brand-border)] bg-white p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold flex items-center gap-2 text-[var(--color-brand-dark)]">

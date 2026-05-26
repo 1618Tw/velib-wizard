@@ -485,6 +485,66 @@ def station_forecast(
     return result
 
 
+@app.get("/api/model-runs")
+def model_runs(
+    limit: int = 30,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Recent training runs per horizon, for the drift panel.
+
+    Returns the last ``limit`` rows of ``model_runs`` for each distinct
+    ``horizon_minutes`` value, oldest-first within each horizon so the
+    frontend can draw a left-to-right time series. Fields are pulled out
+    of the ``metrics`` jsonb so the client doesn't need to know the
+    storage shape.
+    """
+    rows = session.execute(
+        text(
+            """
+            WITH ranked AS (
+              SELECT
+                trained_at,
+                model_version,
+                (metrics->>'horizon_minutes')::int   AS horizon_minutes,
+                (metrics->>'mae_test')::float        AS mae_test,
+                (metrics->>'mae_val')::float         AS mae_val,
+                (metrics->>'baseline_mae_test')::float AS baseline_mae,
+                (metrics->>'win_pct')::float         AS win_pct,
+                (metrics->>'n_test')::int            AS n_test,
+                ROW_NUMBER() OVER (
+                  PARTITION BY (metrics->>'horizon_minutes')::int
+                  ORDER BY trained_at DESC
+                ) AS rn
+              FROM model_runs
+            )
+            SELECT trained_at, model_version, horizon_minutes,
+                   mae_test, mae_val, baseline_mae, win_pct, n_test
+            FROM ranked
+            WHERE rn <= :limit
+            ORDER BY horizon_minutes, trained_at ASC
+            """
+        ),
+        {"limit": limit},
+    ).mappings().all()
+    return {
+        "limit": limit,
+        "n_runs": len(rows),
+        "runs": [
+            {
+                "trained_at": r["trained_at"].isoformat(),
+                "model_version": r["model_version"],
+                "horizon_minutes": int(r["horizon_minutes"]),
+                "mae_test": float(r["mae_test"]) if r["mae_test"] is not None else None,
+                "mae_val": float(r["mae_val"]) if r["mae_val"] is not None else None,
+                "baseline_mae": float(r["baseline_mae"]) if r["baseline_mae"] is not None else None,
+                "win_pct": float(r["win_pct"]) if r["win_pct"] is not None else None,
+                "n_test": int(r["n_test"]) if r["n_test"] is not None else None,
+            }
+            for r in rows
+        ],
+    }
+
+
 @app.get("/api/forecasts/risk")
 def forecasts_risk(
     horizon: int = 120,

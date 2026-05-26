@@ -48,6 +48,23 @@ export type ForecastsRisk = {
   stations: ForecastStation[];
 };
 
+export type ModelRun = {
+  trained_at: string;
+  model_version: string;
+  horizon_minutes: number;
+  mae_test: number | null;
+  mae_val: number | null;
+  baseline_mae: number | null;
+  win_pct: number | null;
+  n_test: number | null;
+};
+
+export type ModelRuns = {
+  limit: number;
+  n_runs: number;
+  runs: ModelRun[];
+};
+
 export type StatusOverview = {
   ok: boolean;
   checked_at: string;
@@ -101,4 +118,6 @@ export const api = {
   status: () => getJSONLenient<StatusOverview>("/api/status"),
   forecastsRisk: (horizon: number) =>
     getJSON<ForecastsRisk>(`/api/forecasts/risk?horizon=${horizon}`),
+  modelRuns: (limit = 30) =>
+    getJSON<ModelRuns>(`/api/model-runs?limit=${limit}`),
 };
