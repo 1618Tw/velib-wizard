@@ -13,7 +13,7 @@ we don't need a sidecar to recover the ``station_id`` codes at inference.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import lightgbm as lgb
@@ -158,11 +158,30 @@ def refresh_forecasts(
         model_version = row[0]
 
     now = datetime.now(tz=timezone.utc)
+    # Diagnostic: when the inference frame ends up empty we want to know
+    # whether _load_raw returned nothing (DB / connection issue) or whether
+    # dropna stripped everything (lag/feature alignment issue).
+    from forecaster.features import _load_raw
+
+    pad = timedelta(minutes=max(cfg.lag_minutes) + cfg.grid_minutes)
+    raw_for_count = _load_raw(session, now - pad, now + timedelta(minutes=1))
+    raw_rows = int(len(raw_for_count))
+    raw_stations = int(raw_for_count["station_id"].nunique()) if raw_rows else 0
+    del raw_for_count  # don't double the memory
+
     frame = build_inference_frame(session, now, cfg)
     if frame.empty:
-        logger.warning("inference frame empty — skipping upsert")
+        logger.warning(
+            "inference frame empty — skipping upsert (raw_rows=%d, raw_stations=%d, window=%dm)",
+            raw_rows,
+            raw_stations,
+            pad.total_seconds() / 60,
+        )
         return {
             "n_stations": 0,
+            "raw_rows": raw_rows,
+            "raw_stations": raw_stations,
+            "window_minutes": int(pad.total_seconds() / 60),
             "model_version": model_version,
             "computed_at": now.isoformat(),
         }
