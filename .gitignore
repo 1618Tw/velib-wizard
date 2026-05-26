@@ -38,3 +38,9 @@ Thumbs.db
 
 # Worktrees
 .worktrees/
+
+# Time machine snapshots — local-only project status checkpoints
+time_machine/
+
+# Claude Code local settings (per-user)
+.claude/settings.local.json
