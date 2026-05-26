@@ -442,31 +442,47 @@ def cron_train_forecast(
     return {"status": "scheduled", "horizons": horizons}
 
 
-@app.post("/api/cron/refresh-forecasts", dependencies=[Depends(require_cron_secret)])
-def cron_refresh_forecasts(
-    horizon: int | None = None,
-    session: Session = Depends(get_session),
-) -> dict:
-    """Batch-predict every station for each horizon (default: all four).
+def _refresh_horizons_background(horizons: list[int]) -> None:
+    """Run the per-horizon refresh after the HTTP response is flushed.
 
-    Each horizon takes a few seconds on a cached booster, so the whole
-    sweep fits comfortably under the Render HTTP timeout. A per-horizon
-    failure is captured in the response instead of bubbling up — one bad
-    booster shouldn't keep the others from refreshing.
+    Each horizon gets its own session so a single horizon failing doesn't
+    cascade. Missing boosters are logged and skipped, mirroring the old
+    inline behaviour.
     """
-    horizons = [horizon] if horizon else list(DEFAULT_HORIZONS)
-    results: dict[int, dict] = {}
+    from db.session import SessionLocal
+
     for h in horizons:
         try:
-            results[h] = forecaster_predict.refresh_forecasts(
-                session, horizon_minutes=h
-            )
+            with SessionLocal() as session:
+                result = forecaster_predict.refresh_forecasts(
+                    session, horizon_minutes=h
+                )
+            logging.info("background refresh ok for horizon=%dm: %s", h, result)
         except FileNotFoundError as e:
-            results[h] = {"error": "no_booster", "detail": str(e)}
-        except Exception as e:
-            logging.exception("refresh failed for horizon=%dm", h)
-            results[h] = {"error": "exception", "detail": str(e)}
-    return {"horizons": horizons, "results": results}
+            logging.warning("background refresh: no booster for horizon=%dm (%s)", h, e)
+        except Exception:
+            logging.exception("background refresh failed for horizon=%dm", h)
+
+
+@app.post("/api/cron/refresh-forecasts", dependencies=[Depends(require_cron_secret)])
+def cron_refresh_forecasts(
+    background_tasks: BackgroundTasks,
+    horizon: int | None = None,
+) -> dict:
+    """Schedule the per-horizon refresh and return immediately.
+
+    Refreshing all horizons takes several seconds on warm boosters and
+    much longer on a cold Render instance, which exceeded cron-job.org's
+    30 s response timeout (observed 2026-05-26). Returning a fast 202
+    keeps the cron happy and lets the work complete asynchronously,
+    mirroring the train-forecast pattern.
+
+    Pass ``?horizon=120`` to refresh a single horizon; omit it to refresh
+    the full ``DEFAULT_HORIZONS`` set.
+    """
+    horizons = [horizon] if horizon else list(DEFAULT_HORIZONS)
+    background_tasks.add_task(_refresh_horizons_background, horizons)
+    return {"status": "scheduled", "horizons": horizons}
 
 
 @app.get("/api/stations/{station_id}/forecast")
