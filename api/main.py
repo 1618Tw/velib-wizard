@@ -494,6 +494,7 @@ def _refresh_horizons_background(horizons: list[int]) -> None:
 def cron_refresh_forecasts(
     background_tasks: BackgroundTasks,
     horizon: int | None = None,
+    sync: bool = False,
 ) -> dict:
     """Schedule the per-horizon refresh and return immediately.
 
@@ -504,9 +505,29 @@ def cron_refresh_forecasts(
     mirroring the train-forecast pattern.
 
     Pass ``?horizon=120`` to refresh a single horizon; omit it to refresh
-    the full ``DEFAULT_HORIZONS`` set.
+    the full ``DEFAULT_HORIZONS`` set. Pass ``?sync=true`` for a
+    synchronous run that returns the per-horizon result (including any
+    exception detail) — useful when the background task is silently
+    failing and you need to see what's wrong.
     """
     horizons = [horizon] if horizon else list(DEFAULT_HORIZONS)
+    if sync:
+        from db.session import SessionLocal
+
+        results: dict[int, dict] = {}
+        for h in horizons:
+            try:
+                with SessionLocal() as session:
+                    results[h] = forecaster_predict.refresh_forecasts(
+                        session, horizon_minutes=h
+                    )
+            except FileNotFoundError as e:
+                results[h] = {"error": "no_booster", "detail": str(e)}
+            except Exception as e:
+                logging.exception("sync refresh failed for horizon=%dm", h)
+                results[h] = {"error": type(e).__name__, "detail": str(e)}
+        return {"mode": "sync", "horizons": horizons, "results": results}
+
     background_tasks.add_task(_refresh_horizons_background, horizons)
     return {"status": "scheduled", "horizons": horizons}
 
