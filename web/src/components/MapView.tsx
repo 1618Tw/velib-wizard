@@ -8,10 +8,11 @@ import { X } from "lucide-react";
 
 import { api, type Station } from "@/lib/api";
 
-const HORIZON_OPTIONS = [30, 60, 90, 120] as const;
+const HORIZON_OPTIONS = [0, 30, 60, 90, 120] as const;
 const DEFAULT_HORIZON = 120;
 
 function horizonLabel(min: number): string {
+  if (min === 0) return "Now";
   if (min < 60) return `${min} min`;
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -88,13 +89,22 @@ export default function MapView() {
     queryFn: () => api.forecastsRisk(horizon),
     refetchInterval: 5 * 60_000,
     staleTime: 60_000,
+    enabled: horizon !== 0,
   });
 
-  const predictedByStation = useMemo(() => {
+  const pctByStation = useMemo(() => {
     const map = new Map<string, number | null>();
-    forecast?.stations.forEach((s) => map.set(s.station_id, s.predicted_pct));
+    if (horizon === 0) {
+      stations.forEach((s) =>
+        map.set(s.station_id, fillRatio(s.bikes, s.docks)),
+      );
+    } else {
+      forecast?.stations.forEach((s) =>
+        map.set(s.station_id, s.predicted_pct),
+      );
+    }
     return map;
-  }, [forecast]);
+  }, [horizon, stations, forecast]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -130,13 +140,13 @@ export default function MapView() {
     const fc = {
       type: "FeatureCollection" as const,
       features: stations.map((s) => {
-        const predicted = predictedByStation.get(s.station_id) ?? null;
+        const pct = pctByStation.get(s.station_id) ?? null;
         return {
           type: "Feature" as const,
           geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] },
           properties: {
             station_id: s.station_id,
-            color: colorForPct(predicted),
+            color: colorForPct(pct),
           },
         };
       }),
@@ -180,7 +190,7 @@ export default function MapView() {
 
     if (map.isStyleLoaded()) apply();
     else map.once("load", apply);
-  }, [stations, predictedByStation]);
+  }, [stations, pctByStation]);
 
   return (
     <div
@@ -189,7 +199,7 @@ export default function MapView() {
     >
       <div ref={containerRef} className="w-full h-full" />
 
-      <Legend />
+      <Legend isLive={horizon === 0} />
 
       <div className="absolute top-3 right-14 z-10 bg-white/90 backdrop-blur rounded-lg shadow-sm border border-[var(--color-brand-border)] px-3 py-1.5 text-xs text-[var(--color-brand-dark)] font-medium">
         {stations.length.toLocaleString()} stations
@@ -198,7 +208,7 @@ export default function MapView() {
       <HorizonSlider
         value={horizon}
         onChange={setHorizon}
-        hasData={!!forecast}
+        hasData={horizon === 0 ? stations.length > 0 : !!forecast}
         computedAt={forecast?.stations[0]?.computed_at ?? null}
       />
 
@@ -266,18 +276,22 @@ function HorizonSlider({
         ))}
       </div>
       <div className="text-[10px] text-[var(--color-brand-dark)]/50 mt-2 leading-tight">
-        {hasData
-          ? `Predicted fullness · refreshed ${ageMin}m ago`
-          : "Loading forecasts…"}
+        {value === 0
+          ? hasData
+            ? "Live fullness · refreshed every minute"
+            : "Loading live data…"
+          : hasData
+            ? `Predicted fullness · refreshed ${ageMin}m ago`
+            : "Loading forecasts…"}
       </div>
     </div>
   );
 }
 
-function Legend() {
+function Legend({ isLive }: { isLive: boolean }) {
   return (
     <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur rounded-lg shadow-sm border border-[var(--color-brand-border)] px-3 py-2 text-xs flex flex-col gap-1.5 text-[var(--color-brand-dark)]">
-      <div className="font-semibold">Predicted fullness</div>
+      <div className="font-semibold">{isLive ? "Live fullness" : "Predicted fullness"}</div>
       <div
         className="h-2 w-44 rounded-full"
         style={{
