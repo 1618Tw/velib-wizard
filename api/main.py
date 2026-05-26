@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from collectors.gbfs import collect_station_information, collect_station_status
+from collectors.maintenance import reindex_status_snapshots_pkey
 from collectors.retention import downsample_and_prune
 from config import settings
 from db.session import get_session
@@ -387,6 +388,31 @@ def cron_collect_status(session: Session = Depends(get_session)) -> dict:
 @app.post("/api/cron/retention", dependencies=[Depends(require_cron_secret)])
 def cron_retention(session: Session = Depends(get_session)) -> dict:
     return downsample_and_prune(session)
+
+
+def _reindex_background() -> None:
+    """Run the REINDEX on its own AUTOCOMMIT connection."""
+    from db.session import engine
+
+    try:
+        result = reindex_status_snapshots_pkey(engine)
+        logging.info("background reindex ok: %s", result)
+    except Exception:
+        logging.exception("background reindex failed")
+
+
+@app.post("/api/cron/reindex", dependencies=[Depends(require_cron_secret)])
+def cron_reindex(background_tasks: BackgroundTasks) -> dict:
+    """Schedule a CONCURRENT REINDEX of the status_snapshots PK index.
+
+    Heavy DELETE workload from retention bloats the B-tree without
+    VACUUM ever compacting it; without periodic REINDEX the PK grows
+    unbounded (we observed 211 MB on a 169 MB table). Returns 202
+    immediately so cron-job.org doesn't sit on the connection for the
+    ~30–90 s it takes to rebuild.
+    """
+    background_tasks.add_task(_reindex_background)
+    return {"status": "scheduled", "index": "status_snapshots_pkey"}
 
 
 # ---------------------------------------------------------------------------
