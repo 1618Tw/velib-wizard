@@ -189,11 +189,12 @@ def _lag_via_asof(
     if df.empty:
         return pd.Series([], dtype="float32", index=df.index)
 
-    target_ts = df["ts"] - pd.Timedelta(minutes=lag_minutes)
+    # Build target keeping `target_ts` as a tz-aware Series — using
+    # .values strips the timezone and `merge_asof` then refuses to merge.
     target = pd.DataFrame(
         {
-            "station_id": df["station_id"].values,
-            "ts": target_ts.values,
+            "station_id": df["station_id"].to_numpy(),
+            "ts": df["ts"] - pd.Timedelta(minutes=lag_minutes),
             "_orig_idx": np.arange(len(df)),
         }
     ).sort_values(["ts", "station_id"], kind="stable")
@@ -264,11 +265,10 @@ def _add_target(df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
     the slop: if the nearest future row is more than ``grid + 5`` minutes
     past the target time, the label is NaN and the row is dropped.
     """
-    target_ts = df["ts"] + pd.Timedelta(minutes=config.horizon_minutes)
     target = pd.DataFrame(
         {
-            "station_id": df["station_id"].values,
-            "ts": target_ts.values,
+            "station_id": df["station_id"].to_numpy(),
+            "ts": df["ts"] + pd.Timedelta(minutes=config.horizon_minutes),
             "_orig_idx": np.arange(len(df)),
         }
     ).sort_values(["ts", "station_id"], kind="stable")
