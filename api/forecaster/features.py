@@ -171,28 +171,74 @@ def _add_temporal(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _lag_via_asof(
+    df: pd.DataFrame, lag_minutes: int, tolerance_minutes: int = 15
+) -> pd.Series:
+    """For each row in ``df`` return ``bikes_pct`` from the row whose ``ts``
+    is closest to ``current_ts - lag_minutes`` (looking backward only).
+
+    Uses ``pd.merge_asof`` with ``direction='backward'`` so we never pick
+    up a future value. Robust to gaps in the source data, unlike a naive
+    ``.shift(N)`` which assumes a regular grid. ``tolerance_minutes``
+    bounds the slop between the requested target time and the chosen
+    row — if no row exists within that window, the lag is NaN (and the
+    row gets dropped downstream, as before). 15 min is 3× the nominal
+    5-min grid: tight enough to keep the lag close to the intended
+    horizon, loose enough to absorb the occasional missing tick.
+    """
+    if df.empty:
+        return pd.Series([], dtype="float32", index=df.index)
+
+    target_ts = df["ts"] - pd.Timedelta(minutes=lag_minutes)
+    target = pd.DataFrame(
+        {
+            "station_id": df["station_id"].values,
+            "ts": target_ts.values,
+            "_orig_idx": np.arange(len(df)),
+        }
+    ).sort_values(["ts", "station_id"], kind="stable")
+
+    src = (
+        df[["station_id", "ts", "bikes_pct"]]
+        .rename(columns={"bikes_pct": "_lag_value"})
+        .sort_values(["ts", "station_id"], kind="stable")
+    )
+
+    merged = pd.merge_asof(
+        target,
+        src,
+        on="ts",
+        by="station_id",
+        direction="backward",
+        tolerance=pd.Timedelta(minutes=tolerance_minutes),
+    )
+    # Restore original df order.
+    merged = merged.sort_values("_orig_idx", kind="stable")
+    out = merged["_lag_value"].astype("float32")
+    out.index = df.index
+    return out
+
+
 def _add_lags_and_rolling(df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
     """Lag and rolling features.
 
-    Assumes ``df`` is already sorted by ``(station_id, ts)`` and snapshots
-    sit on a regular ``config.grid_minutes`` grid. Gaps in the source data
-    will produce NaN lag values, which are dropped later.
+    Lags are computed by *timestamp* via :func:`_lag_via_asof`, not by row
+    position, so the function is robust to gaps in the source data. (The
+    earlier ``.shift(N)`` approach broke whenever collection coverage
+    dropped below ~37 rows per station in the 185-min window.)
+    Rolling and delta features still use row-position windows; that's
+    fine in practice because rolling tolerates partial windows via
+    ``min_periods`` and the delta is anchored to the now-robust 15-min
+    lag.
     """
-    grouped = df.groupby("station_id", group_keys=False, sort=False)
-    bikes_pct = df["bikes_pct"]
+    df = df.sort_values(["station_id", "ts"], kind="stable").reset_index(drop=True)
 
     # --- Lags -------------------------------------------------------------
     for lag in config.lag_minutes:
-        if lag % config.grid_minutes != 0:
-            raise ValueError(
-                f"lag {lag} must be a multiple of grid_minutes={config.grid_minutes}"
-            )
-        steps = lag // config.grid_minutes
-        df[f"bikes_pct_lag_{lag}m"] = (
-            grouped[bikes_pct.name].shift(steps).astype("float32")
-        )
+        df[f"bikes_pct_lag_{lag}m"] = _lag_via_asof(df, lag)
 
     # --- Rolling mean over the trailing window ----------------------------
+    grouped = df.groupby("station_id", group_keys=False, sort=False)
     roll_steps = config.rolling_minutes // config.grid_minutes
     df["bikes_pct_roll_1h"] = (
         grouped["bikes_pct"]
@@ -210,18 +256,37 @@ def _add_lags_and_rolling(df: pd.DataFrame, config: FeatureConfig) -> pd.DataFra
 
 
 def _add_target(df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
-    """Target = ``bikes_pct`` at ``ts + horizon_minutes``."""
-    if config.horizon_minutes % config.grid_minutes != 0:
-        raise ValueError(
-            f"horizon {config.horizon_minutes} must be a multiple of "
-            f"grid_minutes={config.grid_minutes}"
-        )
-    steps = config.horizon_minutes // config.grid_minutes
-    df["target"] = (
-        df.groupby("station_id", group_keys=False, sort=False)["bikes_pct"]
-        .shift(-steps)
-        .astype("float32")
+    """Target = ``bikes_pct`` at ``ts + horizon_minutes``.
+
+    Timestamp-based via :func:`pd.merge_asof` with ``direction='forward'``
+    so a gap in the data doesn't produce a target that's silently 30+
+    minutes off the intended horizon. A tolerance of one grid step caps
+    the slop: if the nearest future row is more than ``grid + 5`` minutes
+    past the target time, the label is NaN and the row is dropped.
+    """
+    target_ts = df["ts"] + pd.Timedelta(minutes=config.horizon_minutes)
+    target = pd.DataFrame(
+        {
+            "station_id": df["station_id"].values,
+            "ts": target_ts.values,
+            "_orig_idx": np.arange(len(df)),
+        }
+    ).sort_values(["ts", "station_id"], kind="stable")
+    src = (
+        df[["station_id", "ts", "bikes_pct"]]
+        .rename(columns={"bikes_pct": "_target_value"})
+        .sort_values(["ts", "station_id"], kind="stable")
     )
+    merged = pd.merge_asof(
+        target,
+        src,
+        on="ts",
+        by="station_id",
+        direction="forward",
+        tolerance=pd.Timedelta(minutes=config.grid_minutes + 5),
+    )
+    merged = merged.sort_values("_orig_idx", kind="stable")
+    df["target"] = merged["_target_value"].astype("float32").values
     return df
 
 
@@ -245,8 +310,13 @@ def build_training_frame(
     why ``[start, end)`` should reflect the *training window*, not the raw
     fetch window: we automatically pad both sides.
     """
-    pad_before = timedelta(minutes=max(config.lag_minutes))
-    pad_after = timedelta(minutes=config.horizon_minutes)
+    # Pad both sides by an extra `tolerance` so the timestamp-based
+    # merge_asof lookups in _add_lags_and_rolling / _add_target can find
+    # a match even at the trailing edge of the window.
+    lag_tolerance = timedelta(minutes=15)
+    target_tolerance = timedelta(minutes=config.grid_minutes + 5)
+    pad_before = timedelta(minutes=max(config.lag_minutes)) + lag_tolerance
+    pad_after = timedelta(minutes=config.horizon_minutes) + target_tolerance
 
     raw = _load_raw(session, start - pad_before, end + pad_after)
     if raw.empty:
@@ -276,7 +346,10 @@ def build_inference_frame(
     No ``target`` column. Returned frame is what ``predict.py`` feeds to the
     LightGBM booster to produce ``now + horizon`` forecasts.
     """
-    pad = timedelta(minutes=max(config.lag_minutes) + config.grid_minutes)
+    # Pad by `lag_tolerance` past the longest lag so the timestamp-based
+    # asof lookup in _add_lags_and_rolling has room to find a match at
+    # the trailing edge.
+    pad = timedelta(minutes=max(config.lag_minutes) + 15)
     raw = _load_raw(session, now - pad, now + timedelta(minutes=1))
     if raw.empty:
         return raw
