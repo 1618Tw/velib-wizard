@@ -221,6 +221,109 @@ def refresh_forecasts(
     }
 
 
+def refresh_forecasts_multi(
+    session: "Session",
+    horizons: list[int],
+) -> dict[int, dict]:
+    """Refresh forecasts for multiple horizons sharing a single inference frame.
+
+    The expensive step in :func:`refresh_forecasts` is ``_load_raw`` —
+    ~3 h of snapshots for every station — which is identical regardless
+    of the prediction horizon (only the trained booster changes). Doing
+    it once per cycle instead of once per horizon cuts Supabase egress
+    on this path by ``len(horizons)`` × ≈ 8 MB. With six horizons that
+    saves ~6× the load.
+
+    A per-horizon failure (missing booster, prediction error) is caught
+    and recorded in the returned dict so the others continue. The frame
+    is cloned per booster because :func:`_align_station_categories`
+    mutates ``station_id`` to a Categorical typed against a specific
+    booster's categories.
+    """
+    if not horizons:
+        return {}
+
+    now = datetime.now(tz=timezone.utc)
+    # FeatureConfig.horizon_minutes only affects the target column (which
+    # inference doesn't compute), so any horizon value works to drive the
+    # shared frame.
+    shared_cfg = FeatureConfig(horizon_minutes=horizons[0])
+
+    # One model_version label for all horizons in this cycle. Mirrors the
+    # single-horizon function (which picks `LIMIT 1` from model_runs) so
+    # the read endpoint's `DISTINCT ON computed_at DESC` still sees a
+    # consistent row layout.
+    row = session.execute(
+        text("SELECT model_version FROM model_runs ORDER BY trained_at DESC LIMIT 1")
+    ).first()
+    if row is None:
+        raise RuntimeError("no model_runs entries — call train_forecast first")
+    model_version = row[0]
+
+    frame = build_inference_frame(session, now, shared_cfg)
+    if frame.empty:
+        logger.warning("inference frame empty — skipping upsert across all horizons")
+        return {
+            h: {
+                "n_stations": 0,
+                "model_version": model_version,
+                "computed_at": now.isoformat(),
+            }
+            for h in horizons
+        }
+
+    results: dict[int, dict] = {}
+    for h in horizons:
+        try:
+            cfg = FeatureConfig(horizon_minutes=h)
+            booster = _load_booster(h)
+
+            # Clone before aligning — _align_station_categories mutates
+            # station_id, and the next horizon needs the un-aligned column.
+            local = frame.copy()
+            local = _align_station_categories(local, booster)
+            X = local[feature_columns(cfg)]
+            predictions = pd.Series(booster.predict(X), index=X.index).clip(0.0, 1.0)
+            risk_bike, risk_dock = _compute_risks(predictions)
+
+            payload = [
+                {
+                    "sid": str(sid),
+                    "h": h,
+                    "rb": float(rb),
+                    "rd": float(rd),
+                    "pp": float(pp),
+                    "v": model_version,
+                }
+                for sid, rb, rd, pp in zip(
+                    local["station_id"].astype(str),
+                    risk_bike,
+                    risk_dock,
+                    predictions,
+                    strict=True,
+                )
+            ]
+            session.execute(text(_UPSERT_SQL), payload)
+            session.commit()
+
+            results[h] = {
+                "n_stations": len(payload),
+                "model_version": model_version,
+                "computed_at": now.isoformat(),
+                "mean_predicted_pct": float(predictions.mean()),
+                "mean_risk_bike": float(risk_bike.mean()),
+                "mean_risk_dock": float(risk_dock.mean()),
+            }
+        except FileNotFoundError as e:
+            logger.warning("no booster for horizon=%dm: %s", h, e)
+            results[h] = {"error": "no_booster", "detail": str(e)}
+        except Exception as e:
+            logger.exception("refresh failed for horizon=%dm", h)
+            results[h] = {"error": type(e).__name__, "detail": str(e)}
+
+    return results
+
+
 def predict_one(
     session: "Session",
     station_id: str,

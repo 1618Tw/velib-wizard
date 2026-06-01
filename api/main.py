@@ -469,25 +469,21 @@ def cron_train_forecast(
 
 
 def _refresh_horizons_background(horizons: list[int]) -> None:
-    """Run the per-horizon refresh after the HTTP response is flushed.
+    """Run the multi-horizon refresh after the HTTP response is flushed.
 
-    Each horizon gets its own session so a single horizon failing doesn't
-    cascade. Missing boosters are logged and skipped, mirroring the old
-    inline behaviour.
+    Uses :func:`refresh_forecasts_multi` so the inference frame is built
+    once and shared across all horizons — ~6× cut to Supabase egress on
+    this path. Per-horizon errors are captured inside the multi function
+    so one bad booster can't keep the others from refreshing.
     """
     from db.session import SessionLocal
 
-    for h in horizons:
-        try:
-            with SessionLocal() as session:
-                result = forecaster_predict.refresh_forecasts(
-                    session, horizon_minutes=h
-                )
-            logging.info("background refresh ok for horizon=%dm: %s", h, result)
-        except FileNotFoundError as e:
-            logging.warning("background refresh: no booster for horizon=%dm (%s)", h, e)
-        except Exception:
-            logging.exception("background refresh failed for horizon=%dm", h)
+    try:
+        with SessionLocal() as session:
+            results = forecaster_predict.refresh_forecasts_multi(session, horizons)
+        logging.info("background refresh complete: %s", results)
+    except Exception:
+        logging.exception("background refresh wrapper failed")
 
 
 @app.post("/api/cron/refresh-forecasts", dependencies=[Depends(require_cron_secret)])
@@ -514,18 +510,8 @@ def cron_refresh_forecasts(
     if sync:
         from db.session import SessionLocal
 
-        results: dict[int, dict] = {}
-        for h in horizons:
-            try:
-                with SessionLocal() as session:
-                    results[h] = forecaster_predict.refresh_forecasts(
-                        session, horizon_minutes=h
-                    )
-            except FileNotFoundError as e:
-                results[h] = {"error": "no_booster", "detail": str(e)}
-            except Exception as e:
-                logging.exception("sync refresh failed for horizon=%dm", h)
-                results[h] = {"error": type(e).__name__, "detail": str(e)}
+        with SessionLocal() as session:
+            results = forecaster_predict.refresh_forecasts_multi(session, horizons)
         return {"mode": "sync", "horizons": horizons, "results": results}
 
     background_tasks.add_task(_refresh_horizons_background, horizons)
