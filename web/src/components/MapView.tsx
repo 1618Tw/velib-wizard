@@ -48,16 +48,6 @@ function fillRatio(bikes: number | null, docks: number | null): number | null {
   return bikes / total;
 }
 
-/** Bipolar palette: green when balanced (~50%), red at extremes (full or empty).
- *  Used in the side panel — gives a "comfort score" for the current state. */
-function colorForFill(fill: number | null): string {
-  if (fill === null) return "#94a3b8";
-  const dist = Math.abs(fill - 0.5);
-  if (dist < 0.2) return "#16a34a"; // 30%–70%
-  if (dist < 0.4) return "#f59e0b"; // 10%–30% or 70%–90%
-  return "#dc2626"; // extremes
-}
-
 /** Sequential green → yellow → red ramp, smooth via HSL.
  *  Used to color station markers by the model's predicted fullness. */
 function colorForPct(pct: number | null): string {
@@ -75,7 +65,7 @@ function formatPct(fill: number | null): string {
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
-  const [selected, setSelected] = useState<Station | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [horizon, setHorizon] = useState<number>(DEFAULT_HORIZON);
 
   const { data: stations = [] } = useQuery({
@@ -106,6 +96,23 @@ export default function MapView() {
     return map;
   }, [horizon, stations, forecast]);
 
+  // Resolve the click target from current query data, NOT from the closure the
+  // map handler was registered with — otherwise the panel would freeze on the
+  // station list captured when the layer was first added.
+  const selected = useMemo(
+    () => (selectedId ? stations.find((s) => s.station_id === selectedId) ?? null : null),
+    [selectedId, stations],
+  );
+
+  // The model's predicted fill for the selected station at the chosen horizon.
+  // null in "Now" mode (horizon 0) — there's no forecast to show then.
+  const selectedForecastPct = useMemo(() => {
+    if (!selectedId || horizon === 0) return null;
+    return (
+      forecast?.stations.find((s) => s.station_id === selectedId)?.predicted_pct ?? null
+    );
+  }, [selectedId, horizon, forecast]);
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const el = containerRef.current;
@@ -119,6 +126,15 @@ export default function MapView() {
     });
     mapRef.current.on("load", () => mapRef.current?.resize());
     mapRef.current.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    // Blue dot + accuracy circle for the user's own position. The button asks
+    // for permission on click (no prompt on load) and recenters when tapped.
+    mapRef.current.addControl(
+      new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+      }),
+      "top-right",
+    );
 
     const ro = new ResizeObserver(() => mapRef.current?.resize());
     ro.observe(el);
@@ -175,9 +191,8 @@ export default function MapView() {
         const features = map.queryRenderedFeatures(e.point, { layers: ["stations-dots"] });
         const f = features[0];
         if (!f) return;
-        const id = f.properties?.station_id as string;
-        const found = stations.find((s) => s.station_id === id) ?? null;
-        setSelected(found);
+        // Store only the id — the panel resolves fresh data from query state.
+        setSelectedId((f.properties?.station_id as string) ?? null);
       };
       map.on("click", "stations-dots", onClick);
       map.on("mouseenter", "stations-dots", () => {
@@ -212,7 +227,14 @@ export default function MapView() {
         computedAt={forecast?.stations[0]?.computed_at ?? null}
       />
 
-      {selected && <StationPanel station={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <StationPanel
+          station={selected}
+          horizon={horizon}
+          predictedPct={selectedForecastPct}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -236,7 +258,7 @@ function HorizonSlider({
     : null;
 
   return (
-    <div className="absolute bottom-4 right-4 z-10 bg-white/95 backdrop-blur rounded-xl shadow-lg border border-[var(--color-brand-border)] px-4 pt-3 pb-2 w-72 text-[var(--color-brand-dark)]">
+    <div className="absolute bottom-4 left-4 z-10 bg-white/95 backdrop-blur rounded-xl shadow-lg border border-[var(--color-brand-border)] px-4 pt-3 pb-2 w-72 max-w-[calc(100%-1.5rem)] text-[var(--color-brand-dark)]">
       <div className="flex items-baseline justify-between mb-1.5">
         <span className="text-[10px] uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">
           Forecast horizon
@@ -307,8 +329,30 @@ function Dot({ color }: { color: string }) {
   return <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />;
 }
 
-function StationPanel({ station, onClose }: { station: Station; onClose: () => void }) {
-  const fill = fillRatio(station.bikes, station.docks);
+function StationPanel({
+  station,
+  horizon,
+  predictedPct,
+  onClose,
+}: {
+  station: Station;
+  horizon: number;
+  predictedPct: number | null;
+  onClose: () => void;
+}) {
+  const isLive = horizon === 0;
+  // The panel tracks the slider: live state at "Now", model prediction otherwise.
+  const fill = isLive ? fillRatio(station.bikes, station.docks) : predictedPct;
+  // Forecasts give a fill ratio, not bike counts — derive whole bikes/docks from
+  // capacity so the numbers move with the slider too. null while a forecast loads.
+  const bikes = isLive
+    ? station.bikes
+    : predictedPct === null
+      ? null
+      : Math.round(predictedPct * station.capacity);
+  const docks = isLive ? station.docks : bikes === null ? null : station.capacity - bikes;
+  const when = isLive ? "Now" : `in ${horizonLabel(horizon)}`;
+
   return (
     <aside className="absolute right-3 top-3 bottom-3 w-80 max-w-[calc(100%-1.5rem)] z-10 bg-white rounded-xl shadow-lg border border-[var(--color-brand-border)] p-4 flex flex-col gap-4 overflow-y-auto text-[var(--color-brand-dark)]">
       <div className="flex items-start justify-between gap-3">
@@ -318,13 +362,19 @@ function StationPanel({ station, onClose }: { station: Station; onClose: () => v
         </button>
       </div>
 
-      <FullnessBar fill={fill} />
+      <FullnessBar fill={fill} label={when} />
 
       <div className="grid grid-cols-3 gap-2 text-sm">
-        <Stat label="Bikes" value={station.bikes ?? "—"} />
-        <Stat label="Docks" value={station.docks ?? "—"} />
+        <Stat label="Bikes" value={bikes ?? "—"} />
+        <Stat label="Docks" value={docks ?? "—"} />
         <Stat label="Capacity" value={station.capacity} />
       </div>
+
+      <p className="text-[10px] text-[var(--color-brand-dark)]/50 leading-tight -mt-1">
+        {isLive
+          ? "Live availability · refreshed every minute"
+          : "Model prediction · estimated bikes and docks for this horizon"}
+      </p>
 
       <Link
         href={`/station/${station.station_id}`}
@@ -336,13 +386,15 @@ function StationPanel({ station, onClose }: { station: Station; onClose: () => v
   );
 }
 
-function FullnessBar({ fill }: { fill: number | null }) {
+function FullnessBar({ fill, label }: { fill: number | null; label: string }) {
   const pct = fill === null ? 0 : Math.round(fill * 100);
-  const color = colorForFill(fill);
+  // Sequential ramp matches the map dots and legend (empty → full), so the bar
+  // colour equals the dot the user just clicked.
+  const color = colorForPct(fill);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">Fullness</span>
+        <span className="text-[10px] uppercase tracking-wide text-[var(--color-brand-dark)]/60 font-semibold">{label}</span>
         <span className="text-lg font-semibold" style={{ color }}>
           {formatPct(fill)}
         </span>
