@@ -80,6 +80,7 @@ export type StatusOverview = {
     last_snapshot_ts: string | null;
     first_snapshot_ts: string | null;
     minutes_since_last_snapshot: number | null;
+    retention_stale: boolean;
     database_bytes: number;
   };
   sparkline: { bucket: string; n: number }[];

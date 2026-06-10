@@ -223,7 +223,6 @@ def status_overview(response: Response, session: Session = Depends(get_session))
         minutes_since_last is not None
         and minutes_since_last < 15
         and gbfs_ok
-        and not retention_stale
     )
     if not healthy:
         response.status_code = 503

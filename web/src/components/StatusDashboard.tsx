@@ -193,6 +193,12 @@ function StatusBody({
           tone="zinc"
           sub={`since ${new Date(status.process_started_at).toLocaleString()}`}
         />
+        <Tile
+          label="Retention"
+          value={d.retention_stale ? "Stale" : "OK"}
+          tone={d.retention_stale ? "amber" : "green"}
+          sub={d.retention_stale ? "Old snapshots pending cleanup — run POST /api/cron/retention" : "Snapshots pruned within window"}
+        />
       </section>
 
       <section className="rounded-xl border border-[var(--color-brand-border)] bg-white p-4">
