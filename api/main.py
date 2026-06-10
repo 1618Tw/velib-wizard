@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Vélib Wizard API", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # CORS: explicit origins (from ALLOWED_ORIGINS env) plus a regex for common
 # preview/tunnel hosts so we don't have to touch Render every time we add a
