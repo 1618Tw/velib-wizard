@@ -1,11 +1,15 @@
-"""Retention + downsample job.
+"""Retention job.
 
-Keeps the last `RAW_KEEP_DAYS` of `status_snapshots` at 5-min cadence.
-Older rows get rolled up into `status_hourly` (one row per station per hour)
-and then deleted from the raw table.
+Keeps the last `RAW_KEEP_DAYS` of `status_snapshots` at 5-min cadence and
+prunes stale rows from `forecasts` (only the latest forecast per
+station+horizon is useful; older ones are never read).
 
-Idempotent: re-runs on the same window are no-ops because the source rows
-were deleted in the previous run.
+Idempotent: re-runs on the same window are no-ops.
+
+Note: the status_hourly rollup was removed — that table was only used by a
+one-off weather experiment (run 2026-06-04, finding: no MAE improvement) and
+is now permanently empty. Writing to it again would waste ~100 MB/month with
+no benefit.
 """
 from __future__ import annotations
 
@@ -22,40 +26,31 @@ log = logging.getLogger("velib.retention")
 def downsample_and_prune(session: Session, raw_keep_days: int = RAW_KEEP_DAYS) -> dict:
     cutoff_sql = f"date_trunc('hour', now() - interval '{raw_keep_days} days')"
 
-    # 1) Aggregate complete hours older than the cutoff into status_hourly.
-    #    DO NOTHING means a re-run can't double-write; partial-hour merges
-    #    can't happen because we cut on hour boundaries.
-    rolled = session.execute(
-        text(
-            f"""
-            INSERT INTO status_hourly
-              (station_id, hour_ts,
-               bikes_avg, docks_avg,
-               bikes_min, bikes_max,
-               docks_min, docks_max,
-               n)
-            SELECT
-              station_id,
-              date_trunc('hour', ts) AS hour_ts,
-              avg(bikes)::real,
-              avg(docks)::real,
-              min(bikes), max(bikes),
-              min(docks), max(docks),
-              count(*)
-            FROM status_snapshots
-            WHERE ts < {cutoff_sql}
-            GROUP BY station_id, date_trunc('hour', ts)
-            ON CONFLICT (station_id, hour_ts) DO NOTHING
-            """
-        )
-    ).rowcount
-
-    # 2) Drop the raw rows we just rolled up.
+    # 1) Drop raw snapshots older than the retention window.
     deleted = session.execute(
         text(f"DELETE FROM status_snapshots WHERE ts < {cutoff_sql}")
     ).rowcount
 
+    # 2) Drop stale forecasts — keep only the latest computed_at per
+    #    (station_id, horizon_minutes). The map and API always read the
+    #    freshest forecast; older ones accumulate silently and cost ~80 MB/month.
+    forecasts_deleted = session.execute(
+        text("""
+            DELETE FROM forecasts
+            WHERE computed_at < (
+                SELECT max(computed_at) - interval '1 hour'
+                FROM forecasts
+            )
+        """)
+    ).rowcount
+
     session.commit()
 
-    log.info("retention: %s hourly rows inserted, %s raw rows deleted", rolled, deleted)
-    return {"hourly_inserted": rolled or 0, "raw_deleted": deleted or 0}
+    log.info(
+        "retention: %s raw snapshots deleted, %s stale forecasts deleted",
+        deleted, forecasts_deleted,
+    )
+    return {
+        "raw_deleted": deleted or 0,
+        "forecasts_deleted": forecasts_deleted or 0,
+    }

@@ -74,22 +74,17 @@ def require_cron_secret(x_cron_secret: str | None = Header(default=None)) -> Non
 def _retention_stale(
     now: datetime,
     oldest_snapshot: datetime | None,
-    last_hourly: datetime | None,
 ) -> bool:
-    """True when the downsample/prune job has fallen behind its budget.
+    """True when the snapshot-pruning job has fallen behind.
 
-    Two cases:
-    1. ``status_hourly`` empty AND raw history already extends past
-       RAW_KEEP_DAYS — retention should have produced rows by now.
-    2. ``status_hourly`` populated but its newest hour lags the live
-       data by more than RAW_KEEP_DAYS + the cushion.
+    If retention is running, the oldest snapshot should never be older than
+    RAW_KEEP_DAYS + the grace cushion.  When it exceeds that budget the cron
+    has missed enough runs to matter.
     """
+    if oldest_snapshot is None:
+        return False  # nothing collected yet — handled by the stale-data check
     grace = timedelta(days=RAW_KEEP_DAYS, hours=RETENTION_LAG_BUDGET_HOURS)
-    if last_hourly is None:
-        if oldest_snapshot is None:
-            return False  # nothing collected at all — handled by stale check
-        return (now - oldest_snapshot) > grace
-    return (now - last_hourly) > grace
+    return (now - oldest_snapshot) > grace
 
 
 def _maybe_send_alert(kind: str, subject: str, body: str) -> bool:
@@ -115,14 +110,13 @@ def health(session: Session = Depends(get_session)) -> dict:
     stations = session.execute(text("SELECT count(*) FROM stations")).scalar_one()
     snapshots = session.execute(text("SELECT count(*) FROM status_snapshots")).scalar_one()
     last_snap = session.execute(text("SELECT max(ts) FROM status_snapshots")).scalar_one()
-    last_hourly = session.execute(text("SELECT max(hour_ts) FROM status_hourly")).scalar_one()
     first_snap = session.execute(text("SELECT min(ts) FROM status_snapshots")).scalar_one()
 
     now = datetime.now(tz=timezone.utc)
     minutes_since_last = (
         (now - last_snap).total_seconds() / 60.0 if last_snap is not None else None
     )
-    retention_stale = _retention_stale(now, first_snap, last_hourly)
+    retention_stale = _retention_stale(now, first_snap)
 
     # Side effect: trigger an alert email when the system is unhealthy. The
     # keep-warm cron hits this endpoint every 4 min, so this acts as our
@@ -141,19 +135,18 @@ def health(session: Session = Depends(get_session)) -> dict:
                 ),
             )
         if retention_stale:
-            lag = (
-                (now - last_hourly).total_seconds() / 3600.0
-                if last_hourly is not None
+            age_days = (
+                (now - first_snap).total_seconds() / 86400.0
+                if first_snap is not None
                 else None
             )
             _maybe_send_alert(
                 kind="retention_stale",
-                subject="Retention/downsample stalled",
+                subject="Retention stalled",
                 body=(
-                    f"status_hourly.max(hour_ts) lags the live data by "
-                    f"{lag:.1f}h "
-                    f"(budget {RAW_KEEP_DAYS * 24 + RETENTION_LAG_BUDGET_HOURS}h).\n"
-                    f"last_hourly={last_hourly.isoformat() if last_hourly else 'never'}\n\n"
+                    f"Oldest snapshot is {age_days:.1f} days old "
+                    f"(budget {RAW_KEEP_DAYS}d + {RETENTION_LAG_BUDGET_HOURS}h cushion).\n"
+                    f"first_snap={first_snap.isoformat() if first_snap else 'never'}\n\n"
                     f"Check cron-job.org has an active recurring job for "
                     f"POST /api/cron/retention."
                 ),
@@ -167,7 +160,6 @@ def health(session: Session = Depends(get_session)) -> dict:
         "minutes_since_last_snapshot": (
             round(minutes_since_last, 1) if minutes_since_last is not None else None
         ),
-        "last_hourly_ts": last_hourly.isoformat() if last_hourly else None,
         "retention_stale": retention_stale,
         "alerts_enabled": alerts_enabled(),
     }
@@ -196,23 +188,16 @@ def status_overview(response: Response, session: Session = Depends(get_session))
               (SELECT count(*) FROM status_snapshots WHERE ts >= now() - interval '24 hours') AS snapshots_24h,
               (SELECT max(ts) FROM status_snapshots) AS last_ts,
               (SELECT min(ts) FROM status_snapshots) AS first_ts,
-              (SELECT max(hour_ts) FROM status_hourly) AS last_hourly_ts,
               pg_database_size(current_database()) AS db_bytes
             """
         )
     ).mappings().one()
 
     last_ts = row["last_ts"]
-    last_hourly_ts = row["last_hourly_ts"]
     minutes_since_last = (
         (now - last_ts).total_seconds() / 60.0 if last_ts is not None else None
     )
-    retention_stale = _retention_stale(now, row["first_ts"], last_hourly_ts)
-    hours_since_last_hourly = (
-        round((now - last_hourly_ts).total_seconds() / 3600.0, 1)
-        if last_hourly_ts is not None
-        else None
-    )
+    retention_stale = _retention_stale(now, row["first_ts"])
 
     # Sparkline: snapshots per 15-min bucket for the last 6 hours.
     buckets = session.execute(
@@ -260,8 +245,6 @@ def status_overview(response: Response, session: Session = Depends(get_session))
             "minutes_since_last_snapshot": (
                 round(minutes_since_last, 1) if minutes_since_last is not None else None
             ),
-            "last_hourly_ts": last_hourly_ts.isoformat() if last_hourly_ts else None,
-            "hours_since_last_hourly": hours_since_last_hourly,
             "retention_stale": retention_stale,
             "database_bytes": int(row["db_bytes"]),
         },
