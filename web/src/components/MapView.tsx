@@ -1,7 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import maplibregl, { Map as MLMap, MapMouseEvent } from "maplibre-gl";
+import {
+  Map as MLMap,
+  MapMouseEvent,
+  NavigationControl,
+  GeolocateControl,
+  GeoJSONSource,
+  type StyleSpecification,
+} from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
@@ -21,7 +28,7 @@ function horizonLabel(min: number): string {
 
 const PARIS_CENTER: [number, number] = [2.3522, 48.8566];
 
-const RASTER_STYLE: maplibregl.StyleSpecification = {
+const RASTER_STYLE: StyleSpecification = {
   version: 8,
   sources: {
     base: {
@@ -117,7 +124,7 @@ export default function MapView() {
     if (!containerRef.current || mapRef.current) return;
     const el = containerRef.current;
     if (el.offsetWidth === 0 || el.offsetHeight === 0) return;
-    mapRef.current = new maplibregl.Map({
+    mapRef.current = new MLMap({
       container: el,
       style: RASTER_STYLE,
       center: PARIS_CENTER,
@@ -125,11 +132,11 @@ export default function MapView() {
       attributionControl: { compact: true },
     });
     mapRef.current.on("load", () => mapRef.current?.resize());
-    mapRef.current.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    mapRef.current.addControl(new NavigationControl({ visualizePitch: false }), "top-right");
     // Blue dot + accuracy circle for the user's own position. The button asks
     // for permission on click (no prompt on load) and recenters when tapped.
     mapRef.current.addControl(
-      new maplibregl.GeolocateControl({
+      new GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
         trackUserLocation: true,
       }),
@@ -169,7 +176,7 @@ export default function MapView() {
     };
 
     const apply = () => {
-      const src = map.getSource("stations") as maplibregl.GeoJSONSource | undefined;
+      const src = map.getSource("stations") as GeoJSONSource | undefined;
       if (src) {
         src.setData(fc);
         return;
